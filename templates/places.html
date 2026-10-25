@@ -1,6 +1,0 @@
-{% extends "base.html" %}{% block body %}
-<h2>All stored places ({{ rows|length }})</h2>
-<form method=get><input name=q value="{{ q }}" placeholder="filter name/address/phone"> 
-<label><input type=checkbox name=phone value=1 {{ 'checked' if only }}> only with phone</label> <button>Filter</button>
-<a href="{{ url_for('csv_all', q=q, phone='1' if only else None) }}">Download CSV</a></form>
-{% include "_table.html" %}{% endblock %}

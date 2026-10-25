@@ -14,18 +14,26 @@ class PlacesError(Exception):
     pass
 
 
-def search(query, api_key, max_pages=3, region="IN"):
-    """Return up to max_pages*20 places for a text query (Google caps this near 60)."""
+def search(query, api_key, max_pages=3, region="IN", on_request=None):
+    """Return up to max_pages*20 places for a text query (Google caps this near 60).
+
+    on_request is called before every HTTP request (used for usage limits); it may raise PlacesError.
+    """
     out, token = [], None
     for _ in range(max_pages):
+        if on_request:
+            on_request()
         body = {"textQuery": query, "pageSize": 20, "regionCode": region}
         if token:
             body["pageToken"] = token
-        r = requests.post(
-            URL, json=body, timeout=30,
-            headers={"X-Goog-Api-Key": api_key, "X-Goog-FieldMask": FIELDS},
-        )
-        data = r.json()
+        try:
+            r = requests.post(
+                URL, json=body, timeout=30,
+                headers={"X-Goog-Api-Key": api_key, "X-Goog-FieldMask": FIELDS},
+            )
+            data = r.json()
+        except (requests.RequestException, ValueError) as e:
+            raise PlacesError(f"Could not reach Google: {e}")
         if r.status_code != 200:
             raise PlacesError(data.get("error", {}).get("message", r.text))
         for p in data.get("places", []):

@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block title %}All leads · Lead Finder{% endblock %}{% block body %}
+<h1>All leads</h1><p class=sub>{{ total }} businesses across all searches.</p>
+{% set csv_url = url_for('csv_all', **args) %}
+{% include "_filters.html" %}{% include "_leads_table.html" %}{% endblock %}

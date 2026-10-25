@@ -1,0 +1,5 @@
+{% if pages > 1 %}<div class=pager>
+  {% if page > 1 %}<a class="btn ghost sm" href="?{{ (args|dictsort + [('page', page-1)])|urlencode }}">← Prev</a>{% endif %}
+  <span class=hint>Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="btn ghost sm" href="?{{ (args|dictsort + [('page', page+1)])|urlencode }}">Next →</a>{% endif %}
+</div>{% endif %}

@@ -1,4 +1,6 @@
-{% extends "base.html" %}{% block body %}
-<h2>{{ q }} — {{ rows|length }} results</h2>
-<a href="{{ url_for('csv_search', sid=sid) }}">Download CSV</a> · saved to database
-{% include "_table.html" %}{% endblock %}
+{% extends "base.html" %}{% block title %}{{ info.query }} · Lead Finder{% endblock %}{% block body %}
+<p class=hint><a href="{{ url_for('index') }}">← Dashboard</a></p>
+<h1>{{ info.query }}</h1>
+<p class=sub>{{ total }} results · {{ info.new_count }} new leads added · saved {{ info.created_at }} UTC</p>
+{% set csv_url = url_for('csv_search', sid=sid, **args) %}
+{% include "_filters.html" %}{% include "_leads_table.html" %}{% endblock %}

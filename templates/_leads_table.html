@@ -1,0 +1,17 @@
+<div class=table-wrap><table>
+<tr><th>Business<th>Phone<th>Address<th>Rating<th>Status<th>Notes</tr>
+{% for r in rows %}<tr>
+  <td><span class=name>{{ r.name }}</span>{% if r.maps_url %}<div class=acts><a href="{{ r.maps_url }}" target=_blank rel=noopener>Map</a></div>{% endif %}
+  <td>{% if r.phone %}<div>{{ r.phone }}</div>
+    <div class=acts>
+      <a href="tel:{{ r.intl_phone|tel or r.phone|tel }}">Call</a>
+      {% if r.intl_phone|wa %}<a href="https://wa.me/{{ r.intl_phone|wa }}" target=_blank rel=noopener>WhatsApp</a>{% endif %}
+      <button type=button data-copy="{{ r.intl_phone or r.phone }}">Copy</button>
+    </div>{% else %}<span class=hint>—</span>{% endif %}
+  <td class=addr>{{ r.address }}
+  <td>{% if r.rating %}<b>{{ r.rating }}</b> <span class=hint>({{ r.rating_count or 0 }})</span>{% else %}<span class=hint>—</span>{% endif %}
+  <td><select class=st data-pid="{{ r.place_id }}" data-s="{{ r.status }}">{% for s in statuses %}<option {{ 'selected' if r.status==s }}>{{ s }}</option>{% endfor %}</select><span class=saved>Saved</span>
+  <td><input class=notes type=text data-pid="{{ r.place_id }}" value="{{ r.notes or '' }}" placeholder="Add note" maxlength=2000><span class=saved>Saved</span>
+</tr>{% else %}<tr><td colspan=6 class=hint>No leads match.</tr>{% endfor %}
+</table></div>
+{% include "_pager.html" %}

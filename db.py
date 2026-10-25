@@ -1,60 +1,155 @@
+import datetime
+import os
 import sqlite3
+from contextlib import contextmanager
 
-DB = "places.db"
+DB = os.environ.get("DB_PATH", "places.db")
+STATUSES = ["New", "Contacted", "Interested", "Not interested", "Closed"]
 COLS = ["place_id", "name", "phone", "intl_phone", "address", "rating", "rating_count", "maps_url"]
+SORTS = {
+    "newest": "COALESCE(p.added_at,'') DESC, p.name",
+    "name": "p.name COLLATE NOCASE",
+    "rating": "p.rating DESC, p.rating_count DESC",
+    "reviews": "p.rating_count DESC",
+}
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS searches(id INTEGER PRIMARY KEY, query TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, new_count INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS places(
+  place_id TEXT PRIMARY KEY, name TEXT, phone TEXT, intl_phone TEXT, address TEXT,
+  rating REAL, rating_count INTEGER, maps_url TEXT,
+  status TEXT DEFAULT 'New', notes TEXT DEFAULT '', added_at TEXT);
+CREATE TABLE IF NOT EXISTS search_places(search_id INTEGER, place_id TEXT, PRIMARY KEY(search_id, place_id));
+CREATE TABLE IF NOT EXISTS api_usage(day TEXT PRIMARY KEY, calls INTEGER DEFAULT 0);
+"""
 
 
-def conn():
+def _cols(c, table):
+    return {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
+
+
+@contextmanager
+def tx():
     c = sqlite3.connect(DB)
     c.row_factory = sqlite3.Row
-    c.executescript("""
-    CREATE TABLE IF NOT EXISTS searches(id INTEGER PRIMARY KEY, query TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
-    CREATE TABLE IF NOT EXISTS places(
-      place_id TEXT PRIMARY KEY, name TEXT, phone TEXT, intl_phone TEXT, address TEXT,
-      rating REAL, rating_count INTEGER, maps_url TEXT);
-    CREATE TABLE IF NOT EXISTS search_places(search_id INTEGER, place_id TEXT, PRIMARY KEY(search_id, place_id));
-    """)
-    return c
+    try:
+        c.executescript(SCHEMA)
+        # migrate databases created by earlier versions
+        for col, ddl in (("status", "TEXT DEFAULT 'New'"), ("notes", "TEXT DEFAULT ''"), ("added_at", "TEXT")):
+            if col not in _cols(c, "places"):
+                c.execute(f"ALTER TABLE places ADD COLUMN {col} {ddl}")
+        if "new_count" not in _cols(c, "searches"):
+            c.execute("ALTER TABLE searches ADD COLUMN new_count INTEGER DEFAULT 0")
+        yield c
+        c.commit()
+    finally:
+        c.close()
 
 
-def save(query, results):
-    """Store a search. Places are deduplicated globally by place_id."""
-    with conn() as c:
-        sid = c.execute("INSERT INTO searches(query) VALUES (?)", (query,)).lastrowid
+def save(label, results):
+    """Store a search. Places are upserted by place_id; status/notes of existing leads are kept.
+    Returns (search_id, number_of_new_places)."""
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    with tx() as c:
+        sid = c.execute("INSERT INTO searches(query) VALUES (?)", (label,)).lastrowid
+        new = 0
+        upd = ",".join(f"{k}=excluded.{k}" for k in COLS[1:])
         for r in results:
-            c.execute(f"INSERT OR REPLACE INTO places({','.join(COLS)}) VALUES ({','.join('?'*len(COLS))})",
-                      [r[k] for k in COLS])
+            if not c.execute("SELECT 1 FROM places WHERE place_id=?", (r["place_id"],)).fetchone():
+                new += 1
+            c.execute(
+                f"INSERT INTO places({','.join(COLS)},status,notes,added_at) "
+                f"VALUES ({','.join('?' * len(COLS))},'New','',?) ON CONFLICT(place_id) DO UPDATE SET {upd}",
+                [r.get(k) for k in COLS] + [now])
             c.execute("INSERT OR IGNORE INTO search_places VALUES (?,?)", (sid, r["place_id"]))
-    return sid
+        c.execute("UPDATE searches SET new_count=? WHERE id=?", (new, sid))
+    return sid, new
 
 
-def get(sid):
-    with conn() as c:
-        q = c.execute("SELECT query FROM searches WHERE id=?", (sid,)).fetchone()
-        rows = c.execute("SELECT p.* FROM places p JOIN search_places s USING(place_id) WHERE s.search_id=?", (sid,)).fetchall()
-    return (q["query"] if q else None), [dict(r) for r in rows]
+def search_info(sid):
+    with tx() as c:
+        r = c.execute("SELECT * FROM searches WHERE id=?", (sid,)).fetchone()
+    return dict(r) if r else None
 
 
-def history():
-    with conn() as c:
+def _where(text, status, phone, mobile, search_id):
+    w, a = ["1=1"], []
+    if search_id is not None:
+        w.append("p.place_id IN (SELECT place_id FROM search_places WHERE search_id=?)")
+        a.append(search_id)
+    if text:
+        w.append("(p.name LIKE ? OR p.address LIKE ? OR p.phone LIKE ? OR p.notes LIKE ?)")
+        a += [f"%{text}%"] * 4
+    if status in STATUSES:
+        w.append("p.status=?")
+        a.append(status)
+    if phone:
+        w.append("COALESCE(p.phone,'') != ''")
+    if mobile:
+        w.append("p.intl_phone GLOB '+91 [6-9]*'")
+    return " AND ".join(w), a
+
+
+def query_places(text="", status="", phone=False, mobile=False, sort="newest",
+                 page=1, per_page=50, search_id=None):
+    """Return (rows, total). per_page=None returns everything (for export)."""
+    where, args = _where(text, status, phone, mobile, search_id)
+    order = SORTS.get(sort, SORTS["newest"])
+    sql = f"SELECT p.* FROM places p WHERE {where} ORDER BY {order}"
+    with tx() as c:
+        total = c.execute(f"SELECT COUNT(*) FROM places p WHERE {where}", args).fetchone()[0]
+        if per_page:
+            sql += " LIMIT ? OFFSET ?"
+            args = args + [per_page, (max(page, 1) - 1) * per_page]
+        rows = [dict(r) for r in c.execute(sql, args)]
+    return rows, total
+
+
+def history(limit=20):
+    with tx() as c:
         return [dict(r) for r in c.execute(
-            "SELECT s.id, s.query, s.created_at, COUNT(sp.place_id) n FROM searches s "
-            "LEFT JOIN search_places sp ON sp.search_id=s.id GROUP BY s.id ORDER BY s.id DESC")]
+            "SELECT s.id, s.query, s.created_at, s.new_count, COUNT(sp.place_id) n FROM searches s "
+            "LEFT JOIN search_places sp ON sp.search_id=s.id GROUP BY s.id ORDER BY s.id DESC LIMIT ?", (limit,))]
+
+
+def stats():
+    with tx() as c:
+        one = lambda sql: c.execute(sql).fetchone()[0]
+        by = {r[0] or "New": r[1] for r in c.execute("SELECT status, COUNT(*) FROM places GROUP BY status")}
+        return {
+            "total": one("SELECT COUNT(*) FROM places"),
+            "with_phone": one("SELECT COUNT(*) FROM places WHERE COALESCE(phone,'') != ''"),
+            "mobile": one("SELECT COUNT(*) FROM places WHERE intl_phone GLOB '+91 [6-9]*'"),
+            "searches": one("SELECT COUNT(*) FROM searches"),
+            "by_status": {s: by.get(s, 0) for s in STATUSES},
+        }
+
+
+def update_lead(place_id, status=None, notes=None):
+    with tx() as c:
+        if status is not None:
+            c.execute("UPDATE places SET status=? WHERE place_id=?", (status, place_id))
+        if notes is not None:
+            c.execute("UPDATE places SET notes=? WHERE place_id=?", (notes, place_id))
+        return c.total_changes > 0
 
 
 def delete_search(sid):
-    with conn() as c:
+    """Delete a search; leads that belong to no other search are removed unless worked on."""
+    with tx() as c:
         c.execute("DELETE FROM search_places WHERE search_id=?", (sid,))
         c.execute("DELETE FROM searches WHERE id=?", (sid,))
-        c.execute("DELETE FROM places WHERE place_id NOT IN (SELECT place_id FROM search_places)")
+        c.execute("DELETE FROM places WHERE place_id NOT IN (SELECT place_id FROM search_places) "
+                  "AND COALESCE(status,'New')='New' AND COALESCE(notes,'')=''")
 
 
-def all_places(text="", only_phone=False):
-    sql, args = "SELECT * FROM places WHERE 1=1", []
-    if text:
-        sql += " AND (name LIKE ? OR address LIKE ? OR phone LIKE ?)"
-        args += [f"%{text}%"] * 3
-    if only_phone:
-        sql += " AND phone != ''"
-    with conn() as c:
-        return [dict(r) for r in c.execute(sql + " ORDER BY name", args)]
+def usage_today():
+    with tx() as c:
+        r = c.execute("SELECT calls FROM api_usage WHERE day=date('now')").fetchone()
+    return r[0] if r else 0
+
+
+def add_usage(n=1):
+    with tx() as c:
+        c.execute("INSERT INTO api_usage(day, calls) VALUES (date('now'), ?) "
+                  "ON CONFLICT(day) DO UPDATE SET calls=calls+?", (n, n))

@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block title %}Searching · Lead Finder{% endblock %}{% block body %}
+<h1>Searching…</h1><p class=sub>{{ job.label }}</p>
+<div class=card id=job data-id="{{ jid }}">
+  <div class=progress><i></i></div>
+  <p id=jobtext class=hint>Starting…</p>
+  <div id=jobmsg></div>
+  <noscript><p class=flash>Turn on JavaScript to follow progress. Results are saved automatically; check the dashboard.</p></noscript>
+</div>{% endblock %}
