@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block body %}
+<h2>Search</h2>
+<form method=post action="{{ url_for('do_search') }}"><input type=hidden name=csrf value="{{ csrf }}">
+<input name=q placeholder="tiffin service in gurgaon" style="width:60%" required autofocus> <button>Search</button></form>
+<h3>Past searches</h3>
+<div class=wrap><table><tr><th>Keyword<th>Places<th>When (UTC)<th></tr>
+{% for h in hist %}<tr><td><a href="{{ url_for('view', sid=h.id) }}">{{ h.query }}</a><td>{{ h.n }}<td>{{ h.created_at }}
+<td><form method=post action="{{ url_for('delete', sid=h.id) }}" onsubmit="return confirm('Delete this search?')"><input type=hidden name=csrf value="{{ csrf }}"><button>Delete</button></form></tr>
+{% else %}<tr><td colspan=4>No searches yet.</tr>{% endfor %}</table></div>{% endblock %}

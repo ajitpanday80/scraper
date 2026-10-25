@@ -40,3 +40,21 @@ def history():
         return [dict(r) for r in c.execute(
             "SELECT s.id, s.query, s.created_at, COUNT(sp.place_id) n FROM searches s "
             "LEFT JOIN search_places sp ON sp.search_id=s.id GROUP BY s.id ORDER BY s.id DESC")]
+
+
+def delete_search(sid):
+    with conn() as c:
+        c.execute("DELETE FROM search_places WHERE search_id=?", (sid,))
+        c.execute("DELETE FROM searches WHERE id=?", (sid,))
+        c.execute("DELETE FROM places WHERE place_id NOT IN (SELECT place_id FROM search_places)")
+
+
+def all_places(text="", only_phone=False):
+    sql, args = "SELECT * FROM places WHERE 1=1", []
+    if text:
+        sql += " AND (name LIKE ? OR address LIKE ? OR phone LIKE ?)"
+        args += [f"%{text}%"] * 3
+    if only_phone:
+        sql += " AND phone != ''"
+    with conn() as c:
+        return [dict(r) for r in c.execute(sql + " ORDER BY name", args)]

@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block body %}
+<h2>{{ q }} — {{ rows|length }} results</h2>
+<a href="{{ url_for('csv_search', sid=sid) }}">Download CSV</a> · saved to database
+{% include "_table.html" %}{% endblock %}

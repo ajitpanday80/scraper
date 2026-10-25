@@ -1,12 +1,12 @@
-# Places search
+# Places admin
 
-Search box -> Google Places API (New) Text Search -> SQLite + CSV (name, phone, address, rating).
+Admin-only web app: enter a keyword, fetch businesses via Google Places API (New), store in SQLite, export CSV.
 
     pip install -r requirements.txt
-    export GOOGLE_PLACES_API_KEY=...   # key must allow "Places API (New)"
-    python app.py                      # http://localhost:5000
+    export GOOGLE_PLACES_API_KEY=...  ADMIN_PASSWORD=...  SECRET_KEY=$(python -c 'import secrets;print(secrets.token_hex(32))')
+    python app.py        # http://127.0.0.1:5000  (login: ADMIN_USER, default "admin")
 
-Notes: Text Search returns ~20 results/page, and Google caps a query at about 60 results.
-For more coverage, run narrower queries (e.g. per sector/area); places are deduped by place_id.
-Phone fields are billed at a higher tier -- check current Google Maps Platform pricing.
-Run tests: `pytest`
+Never commit the password or API key. Serve behind HTTPS in production (set COOKIE_SECURE=1);
+for a public deployment use a real WSGI server (e.g. gunicorn), not `python app.py`.
+Google caps one query at ~60 results; use narrower keywords for more. Phone fields are billed at a higher tier.
+Tests: `pytest`

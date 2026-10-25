@@ -1,0 +1,4 @@
+<div class=wrap><table><tr><th>Name<th>Phone<th>Address<th>Rating</tr>
+{% for r in rows %}<tr><td>{% if r.maps_url %}<a href="{{ r.maps_url }}" target=_blank rel=noopener>{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}
+<td>{{ r.phone }}<td>{{ r.address }}<td>{% if r.rating %}{{ r.rating }} ({{ r.rating_count or 0 }}){% endif %}</tr>
+{% else %}<tr><td colspan=4>No results.</tr>{% endfor %}</table></div>
