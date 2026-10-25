@@ -4,7 +4,7 @@ Admin-only web app: enter a keyword, fetch businesses via Google Places API (New
 
     pip install -r requirements.txt
     export GOOGLE_PLACES_API_KEY=...  ADMIN_PASSWORD=...  SECRET_KEY=$(python -c 'import secrets;print(secrets.token_hex(32))')
-    python app.py        # http://127.0.0.1:5000  (login: ADMIN_USER, default "admin")
+    python app.py        # http://127.0.0.1:6761  (login: ADMIN_USER, default "admin")
 
 Never commit the password or API key. Serve behind HTTPS in production (set COOKIE_SECURE=1);
 for a public deployment use a real WSGI server (e.g. gunicorn), not `python app.py`.
