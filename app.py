@@ -37,6 +37,8 @@ def wa_number(intl):
 
 
 app.jinja_env.filters["wa"] = wa_number
+app.jinja_env.filters["hue"] = lambda s: sum(map(ord, s or "?")) % 360
+app.jinja_env.filters["initial"] = lambda s: next((c for c in (s or "") if c.isalnum()), "?").upper()
 app.jinja_env.filters["tel"] = lambda s: re.sub(r"[^\d+]", "", s or "")
 
 
@@ -176,10 +178,10 @@ def _filters():
                 sort=request.args.get("sort", "newest"))
 
 
-def _paged(search_id=None):
+def _paged(search_id=None, new_only=False):
     f = _filters()
     page = max(request.args.get("page", 1, type=int), 1)
-    rows, total = db.query_places(**f, page=page, search_id=search_id)
+    rows, total = db.query_places(**f, page=page, search_id=search_id, new_only=new_only)
     pages = max((total + 49) // 50, 1)
     args = {k: v for k, v in request.args.items() if k != "page"}
     return dict(rows=rows, total=total, page=page, pages=pages, f=f, args=args)
@@ -195,7 +197,8 @@ def view(sid):
     info = db.search_info(sid)
     if not info:
         abort(404)
-    return render_template("results.html", info=info, sid=sid, **_paged(sid))
+    scope = "all" if request.args.get("scope") == "all" else "new"
+    return render_template("results.html", info=info, sid=sid, scope=scope, **_paged(sid, scope == "new"))
 
 
 @app.post("/search/<int:sid>/delete")
@@ -240,7 +243,8 @@ def csv_all():
 def csv_search(sid):
     if not db.search_info(sid):
         abort(404)
-    rows, _ = db.query_places(**_filters(), per_page=None, search_id=sid)
+    new_only = request.args.get("scope") != "all"
+    rows, _ = db.query_places(**_filters(), per_page=None, search_id=sid, new_only=new_only)
     return _csv(rows, f"search-{sid}")
 
 

@@ -1,4 +1,4 @@
 {% extends "base.html" %}{% block title %}All leads · Lead Finder{% endblock %}{% block body %}
-<h1>All leads</h1><p class=sub>{{ total }} businesses across all searches.</p>
+<div class=top><div><h1>All leads</h1><p class=sub>{{ total }} unique businesses across all your searches.</p></div></div>
 {% set csv_url = url_for('csv_all', **args) %}
-{% include "_filters.html" %}{% include "_leads_table.html" %}{% endblock %}
+<div class="card flush">{% include "_filters.html" %}{% include "_leads_table.html" %}</div>{% endblock %}

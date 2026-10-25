@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS places(
   place_id TEXT PRIMARY KEY, name TEXT, phone TEXT, intl_phone TEXT, address TEXT,
   rating REAL, rating_count INTEGER, maps_url TEXT,
   status TEXT DEFAULT 'New', notes TEXT DEFAULT '', added_at TEXT);
-CREATE TABLE IF NOT EXISTS search_places(search_id INTEGER, place_id TEXT, PRIMARY KEY(search_id, place_id));
+CREATE TABLE IF NOT EXISTS search_places(search_id INTEGER, place_id TEXT, is_new INTEGER DEFAULT 1, PRIMARY KEY(search_id, place_id));
 CREATE TABLE IF NOT EXISTS api_usage(day TEXT PRIMARY KEY, calls INTEGER DEFAULT 0);
 """
 
@@ -38,6 +38,8 @@ def tx():
         for col, ddl in (("status", "TEXT DEFAULT 'New'"), ("notes", "TEXT DEFAULT ''"), ("added_at", "TEXT")):
             if col not in _cols(c, "places"):
                 c.execute(f"ALTER TABLE places ADD COLUMN {col} {ddl}")
+        if "is_new" not in _cols(c, "search_places"):
+            c.execute("ALTER TABLE search_places ADD COLUMN is_new INTEGER DEFAULT 1")
         if "new_count" not in _cols(c, "searches"):
             c.execute("ALTER TABLE searches ADD COLUMN new_count INTEGER DEFAULT 0")
         yield c
@@ -55,13 +57,13 @@ def save(label, results):
         new = 0
         upd = ",".join(f"{k}=excluded.{k}" for k in COLS[1:])
         for r in results:
-            if not c.execute("SELECT 1 FROM places WHERE place_id=?", (r["place_id"],)).fetchone():
-                new += 1
+            is_new = not c.execute("SELECT 1 FROM places WHERE place_id=?", (r["place_id"],)).fetchone()
+            new += is_new
             c.execute(
                 f"INSERT INTO places({','.join(COLS)},status,notes,added_at) "
                 f"VALUES ({','.join('?' * len(COLS))},'New','',?) ON CONFLICT(place_id) DO UPDATE SET {upd}",
                 [r.get(k) for k in COLS] + [now])
-            c.execute("INSERT OR IGNORE INTO search_places VALUES (?,?)", (sid, r["place_id"]))
+            c.execute("INSERT OR IGNORE INTO search_places VALUES (?,?,?)", (sid, r["place_id"], int(is_new)))
         c.execute("UPDATE searches SET new_count=? WHERE id=?", (new, sid))
     return sid, new
 
@@ -69,13 +71,17 @@ def save(label, results):
 def search_info(sid):
     with tx() as c:
         r = c.execute("SELECT * FROM searches WHERE id=?", (sid,)).fetchone()
-    return dict(r) if r else None
+        total = c.execute("SELECT COUNT(*) FROM search_places WHERE search_id=?", (sid,)).fetchone()[0]
+    if not r:
+        return None
+    return {**dict(r), "total": total, "known": total - (r["new_count"] or 0)}
 
 
-def _where(text, status, phone, mobile, search_id):
+def _where(text, status, phone, mobile, search_id, new_only=False):
     w, a = ["1=1"], []
     if search_id is not None:
-        w.append("p.place_id IN (SELECT place_id FROM search_places WHERE search_id=?)")
+        w.append("p.place_id IN (SELECT place_id FROM search_places WHERE search_id=?"
+                 + (" AND is_new=1)" if new_only else ")"))
         a.append(search_id)
     if text:
         w.append("(p.name LIKE ? OR p.address LIKE ? OR p.phone LIKE ? OR p.notes LIKE ?)")
@@ -91,9 +97,9 @@ def _where(text, status, phone, mobile, search_id):
 
 
 def query_places(text="", status="", phone=False, mobile=False, sort="newest",
-                 page=1, per_page=50, search_id=None):
+                 page=1, per_page=50, search_id=None, new_only=False):
     """Return (rows, total). per_page=None returns everything (for export)."""
-    where, args = _where(text, status, phone, mobile, search_id)
+    where, args = _where(text, status, phone, mobile, search_id, new_only)
     order = SORTS.get(sort, SORTS["newest"])
     sql = f"SELECT p.* FROM places p WHERE {where} ORDER BY {order}"
     with tx() as c:

@@ -2,7 +2,8 @@
 
 Admin-only web app: search businesses via Google Places API (New), build a lead list, track outreach.
 
-- **Search** one keyword, or the same keyword across many areas (beats Google's ~60 results/query cap; duplicates removed)
+- **Search** one keyword, or the same keyword across many areas (beats Google's ~60 results/query cap)
+- **No repeats**: businesses already in your database are hidden from new results (toggle "All" to see them). Google still bills for the call, since its API cannot skip known places
 - **Lead pipeline**: status (New / Contacted / Interested / Not interested / Closed) and notes per lead, saved instantly
 - **One-click** Call, WhatsApp (Indian mobile numbers) and Copy
 - **Filter/sort** all leads, **export CSV** (Excel-ready) for any filtered view

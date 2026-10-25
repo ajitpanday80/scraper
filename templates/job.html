@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% block title %}Searching · Lead Finder{% endblock %}{% block body %}
-<h1>Searching…</h1><p class=sub>{{ job.label }}</p>
-<div class=card id=job data-id="{{ jid }}">
+<div class="card jobcard" id=job data-id="{{ jid }}">
+  <div class=spin id=spin></div>
+  <h1>Finding businesses…</h1><p class=sub style="margin:0">{{ job.label }}</p>
   <div class=progress><i></i></div>
   <p id=jobtext class=hint>Starting…</p>
   <div id=jobmsg></div>

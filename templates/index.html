@@ -1,43 +1,48 @@
-{% extends "base.html" %}{% block body %}
-<h1>Dashboard</h1><p class=sub>Find businesses, build your lead list, track outreach.</p>
+{% extends "base.html" %}{% block title %}Dashboard · Lead Finder{% endblock %}{% block body %}
+<div class=top><div><h1>Dashboard</h1><p class=sub>Find businesses, build your lead list, track outreach.</p></div></div>
 
-<div class=grid>
-  <div class=stat><b>{{ stats.total }}</b><span>Total leads</span></div>
-  <div class=stat><b>{{ stats.with_phone }}</b><span>With phone number</span></div>
-  <div class=stat><b>{{ stats.mobile }}</b><span>Mobile numbers</span></div>
-  <div class=stat><b>{{ stats.searches }}</b><span>Searches run</span></div>
-  <div class=stat><b>{{ used }} / {{ limit }}</b><span>Google API calls today</span>
-    <div class=bar><i style="width:{{ [100, (100*used/limit)|int]|min if limit else 0 }}%"></i></div></div>
-</div>
-
-<div class=card>
-  <h2>New search</h2>
+<section class=hero>
+  <h2>Find new leads</h2>
+  <p>Businesses you already saved are never shown again as new.</p>
   <form method=post action="{{ url_for('do_search') }}">
     <input type=hidden name=csrf value="{{ csrf }}">
-    <div class=row>
-      <div class=grow><input type=text name=q placeholder="e.g. tiffin service in gurgaon" required autofocus></div>
-      <button class=btn>Search</button>
+    <div class=searchbox>
+      <div class=field><svg class=ic><use href="#i-search"/></svg><input type=text name=q placeholder="e.g. tiffin service in gurgaon" required autofocus></div>
+      <button class=btn-white>Search</button>
     </div>
     <details>
-      <summary>Search many areas at once (get past Google's ~60 results per search)</summary>
-      <textarea name=areas rows=6 placeholder="One area per line, e.g.&#10;Sector 56 Gurgaon&#10;DLF Phase 3 Gurgaon&#10;Sohna Road Gurgaon"></textarea>
-      <p class=hint>With areas filled in, the keyword is searched once per area, e.g. "tiffin service <b>in</b> Sector 56 Gurgaon", so leave "in &lt;city&gt;" out of the keyword.
-        Duplicates are removed. Up to {{ max_areas }} areas; each area uses up to 3 API calls.</p>
+      <summary>Search many areas at once</summary>
+      <textarea name=areas rows=5 placeholder="One area per line&#10;Sector 56 Gurgaon&#10;DLF Phase 3 Gurgaon&#10;Sohna Road Gurgaon"></textarea>
+      <p class=hint>The keyword is searched once per area (e.g. “tiffin service in Sector 56 Gurgaon”), so leave “in &lt;city&gt;” out of the keyword.
+        Up to {{ max_areas }} areas; each uses up to 3 API calls. This gets past Google’s ~60 results per search.</p>
     </details>
   </form>
+</section>
+
+<div class=grid>
+  <div class=stat style="--c:#5b5bf0"><div class=chip-ic><svg class=ic><use href="#i-users"/></svg></div><div><b>{{ stats.total }}</b><span>Total leads</span></div></div>
+  <div class=stat style="--c:#0ea5e9"><div class=chip-ic><svg class=ic><use href="#i-phone"/></svg></div><div><b>{{ stats.with_phone }}</b><span>With phone</span></div></div>
+  <div class=stat style="--c:#10b981"><div class=chip-ic><svg class=ic><use href="#i-chat"/></svg></div><div><b>{{ stats.mobile }}</b><span>Mobile numbers</span></div></div>
+  <div class=stat style="--c:#f59e0b"><div class=chip-ic><svg class=ic><use href="#i-layers"/></svg></div><div><b>{{ stats.searches }}</b><span>Searches run</span></div></div>
+  <div class=stat style="--c:#8b5cf6"><div class=chip-ic><svg class=ic><use href="#i-zap"/></svg></div><div style="flex:1"><b>{{ used }}<small style="font-size:.9rem;color:var(--muted);font-weight:500"> / {{ limit }}</small></b><span>API calls today</span>
+    <div class=bar><i style="width:{{ [100, (100*used/limit)|int]|min if limit else 0 }}%"></i></div></div></div>
 </div>
 
-<div class=card>
-  <h2>Pipeline</h2>
-  <div class=pipeline>{% for s, n in stats.by_status.items() %}<div><b>{{ n }}</b><span class=hint>{{ s }}</span></div>{% endfor %}</div>
-</div>
-
-<h2>Recent searches</h2>
-<div class=table-wrap><table>
-<tr><th>Search<th>Results<th>New leads<th>When (UTC)<th></tr>
-{% for h in hist %}<tr>
-  <td><a class=name href="{{ url_for('view', sid=h.id) }}">{{ h.query }}</a>
-  <td>{{ h.n }}<td>{{ h.new_count }}<td>{{ h.created_at }}
-  <td><form method=post action="{{ url_for('delete', sid=h.id) }}" onsubmit="return confirm('Delete this search?')"><input type=hidden name=csrf value="{{ csrf }}"><button class="btn danger sm">Delete</button></form>
-</tr>{% else %}<tr><td colspan=5 class=hint>No searches yet. Run your first one above.</tr>{% endfor %}
-</table></div>{% endblock %}
+<div class=cols>
+  <div class=card>
+    <h2>Pipeline</h2>
+    {% if stats.total %}<div class=funnel>{% for s, n in stats.by_status.items() %}{% if n %}<i class="s{{ loop.index0 }}" style="width:{{ 100*n/stats.total }}%" title="{{ s }}: {{ n }}"></i>{% endif %}{% endfor %}</div>{% endif %}
+    <div class=legend>{% for s, n in stats.by_status.items() %}<div><em class="s{{ loop.index0 }}"></em><div><b>{{ n }}</b><span>{{ s }}</span></div></div>{% endfor %}</div>
+  </div>
+  <div class="card flush">
+    <div style="padding:1.1rem 1.2rem .3rem"><h2>Recent searches</h2></div>
+    <div class=list>
+    {% for h in hist %}<div class=item>
+      <div class=t><a href="{{ url_for('view', sid=h.id) }}">{{ h.query }}</a><span class=hint>{{ h.created_at }} UTC</span></div>
+      <span class="pill ok" title="New leads added">{{ h.new_count }} new</span>
+      <span class=pill title="Already in your system">{{ h.n - h.new_count }} known</span>
+      <form method=post action="{{ url_for('delete', sid=h.id) }}" onsubmit="return confirm('Delete this search? Leads you worked on are kept.')"><input type=hidden name=csrf value="{{ csrf }}"><button class=icon-btn title="Delete" aria-label="Delete search"><svg class="ic sm"><use href="#i-trash"/></svg></button></form>
+    </div>{% else %}<div class=empty><b>No searches yet</b>Run your first search above.</div>{% endfor %}
+    </div>
+  </div>
+</div>{% endblock %}

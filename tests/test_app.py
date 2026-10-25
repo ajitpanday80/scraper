@@ -56,7 +56,7 @@ def test_job_saves_and_dedupes_across_areas(client, monkeypatch):
     assert j["status"] == "done" and j["found"] == 2 and j["new"] == 2 and j["done"] == 2
     login(client)
     page = client.get(f"/search/{j['sid']}").get_data(as_text=True)
-    assert "Tiffmon" in page and "wa.me/918307938948" in page and "2 results" in page
+    assert "Tiffmon" in page and "wa.me/918307938948" in page and "2 new leads" in page
 
 
 def test_search_route_starts_job(client, monkeypatch):
@@ -120,3 +120,26 @@ def test_dashboard_and_old_db_migration(client, tmp_path):
     page = client.get("/").get_data(as_text=True)
     assert "Total leads" in page
     assert db.query_places()[0][0]["status"] == "New"
+
+
+def test_known_places_hidden_by_default(client):
+    s1, n1 = db.save("first", [P("a", "Alpha"), P("b", "Beta")])
+    s2, n2 = db.save("second", [P("b", "Beta"), P("c", "Gamma")])
+    assert (n1, n2) == (2, 1)
+    names = lambda **k: sorted(r["name"] for r in db.query_places(search_id=s2, **k)[0])
+    assert names(new_only=True) == ["Gamma"] and names() == ["Beta", "Gamma"]
+    info = db.search_info(s2)
+    assert (info["total"], info["new_count"], info["known"]) == (2, 1, 1)
+    login(client)
+    page = client.get(f"/search/{s2}").get_data(as_text=True)
+    assert "Gamma" in page and "Beta" not in page and "1 already in your system" in page
+    assert "Beta" in client.get(f"/search/{s2}?scope=all").get_data(as_text=True)
+    assert b"Beta" not in client.get(f"/search/{s2}.csv").data and b"Beta" in client.get(f"/search/{s2}.csv?scope=all").data
+
+
+def test_search_with_nothing_new_shows_message(client):
+    db.save("first", [P("a", "Alpha")])
+    s2, n = db.save("again", [P("a", "Alpha")])
+    login(client)
+    page = client.get(f"/search/{s2}").get_data(as_text=True)
+    assert n == 0 and "Nothing new this time" in page and "Show them anyway" in page

@@ -1,6 +1,21 @@
 {% extends "base.html" %}{% block title %}{{ info.query }} · Lead Finder{% endblock %}{% block body %}
-<p class=hint><a href="{{ url_for('index') }}">← Dashboard</a></p>
-<h1>{{ info.query }}</h1>
-<p class=sub>{{ total }} results · {{ info.new_count }} new leads added · saved {{ info.created_at }} UTC</p>
+<p class=hint style="margin:0 0 .6rem"><a href="{{ url_for('index') }}">← Dashboard</a></p>
+<div class=top>
+  <div><h1>{{ info.query }}</h1>
+    <div class=chips>
+      <span class="pill ok">{{ info.new_count }} new leads</span>
+      <span class=pill>{{ info.known }} already in your system</span>
+      <span class=pill>{{ info.created_at }} UTC</span>
+    </div></div>
+  <div class=seg>
+    <a class="{{ 'on' if scope=='new' }}" href="{{ url_for('view', sid=sid) }}">New<small>{{ info.new_count }}</small></a>
+    <a class="{{ 'on' if scope=='all' }}" href="{{ url_for('view', sid=sid, scope='all') }}">All<small>{{ info.total }}</small></a>
+  </div>
+</div>
 {% set csv_url = url_for('csv_search', sid=sid, **args) %}
-{% include "_filters.html" %}{% include "_leads_table.html" %}{% endblock %}
+{% if scope=='new' and info.new_count == 0 %}
+<div class=card><div class=empty><b>Nothing new this time</b>All {{ info.total }} businesses from this search were already saved in your system.
+  <div style="margin-top:1rem"><a class="btn ghost sm" href="{{ url_for('view', sid=sid, scope='all') }}">Show them anyway</a></div></div></div>
+{% else %}
+<div class="card flush">{% include "_filters.html" %}{% include "_leads_table.html" %}</div>
+{% endif %}{% endblock %}

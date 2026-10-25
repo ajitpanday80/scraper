@@ -1,11 +1,10 @@
-<form method=get class="card row" style="padding:.8rem 1rem">
-  <div class=grow><input type=search name=q value="{{ f.text }}" placeholder="Search name, address, phone, notes"></div>
-  <select name=status style="width:auto"><option value="">All statuses</option>
-    {% for s in statuses %}<option {{ 'selected' if f.status==s }}>{{ s }}</option>{% endfor %}</select>
-  <select name=sort style="width:auto">
-    {% for k, l in [('newest','Newest'),('name','Name A–Z'),('rating','Top rated'),('reviews','Most reviews')] %}<option value="{{ k }}" {{ 'selected' if f.sort==k }}>{{ l }}</option>{% endfor %}</select>
+<form method=get class=toolbar>
+  {% if scope is defined %}<input type=hidden name=scope value="{{ scope }}">{% endif %}
+  <div class=grow><svg class="ic sm"><use href="#i-search"/></svg><input type=search name=q value="{{ f.text }}" placeholder="Search name, address, phone, notes"></div>
+  <select name=status><option value="">All statuses</option>{% for s in statuses %}<option {{ 'selected' if f.status==s }}>{{ s }}</option>{% endfor %}</select>
+  <select name=sort>{% for k, l in [('newest','Newest first'),('name','Name A–Z'),('rating','Top rated'),('reviews','Most reviews')] %}<option value="{{ k }}" {{ 'selected' if f.sort==k }}>{{ l }}</option>{% endfor %}</select>
   <label><input type=checkbox name=phone value=1 {{ 'checked' if f.phone }}> Has phone</label>
   <label><input type=checkbox name=mobile value=1 {{ 'checked' if f.mobile }}> Mobile only</label>
-  <button class="btn sm">Filter</button>
-  <a class="btn ghost sm" href="{{ csv_url }}">Export CSV</a>
+  <button class="btn sm">Apply</button>
+  <a class="btn ghost sm" href="{{ csv_url }}"><svg class="ic sm"><use href="#i-dl"/></svg>Export CSV</a>
 </form>

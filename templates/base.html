@@ -2,13 +2,17 @@
 <meta name=csrf content="{{ csrf }}"><meta name=robots content="noindex,nofollow">
 <title>{% block title %}Lead Finder{% endblock %}</title>
 <link rel=stylesheet href="{{ url_for('static', filename='style.css') }}">
+{% include "_icons.html" %}
 {% if session.admin %}
 <div class=shell>
   <aside class=side>
-    <div class=logo><i></i> Lead Finder</div>
-    <a class="nav {{ 'on' if request.endpoint=='index' }}" href="{{ url_for('index') }}">Dashboard</a>
-    <a class="nav {{ 'on' if request.endpoint in ('leads','view') }}" href="{{ url_for('leads') }}">All leads</a>
-    <form class=push method=post action="{{ url_for('logout') }}"><input type=hidden name=csrf value="{{ csrf }}"><button class="btn ghost sm">Log out</button></form>
+    <div class=logo><i><svg class=ic><use href="#i-target"/></svg></i><span>Lead Finder</span></div>
+    <div class=lbl>Menu</div>
+    <a class="nav {{ 'on' if request.endpoint=='index' }}" href="{{ url_for('index') }}"><svg class=ic><use href="#i-grid"/></svg>Dashboard</a>
+    <a class="nav {{ 'on' if request.endpoint in ('leads','view') }}" href="{{ url_for('leads') }}"><svg class=ic><use href="#i-users"/></svg>All leads</a>
+    <form class=push method=post action="{{ url_for('logout') }}"><input type=hidden name=csrf value="{{ csrf }}">
+      <div class=user><div class=av>A</div><div><b style="color:#fff">Admin</b><small>Signed in</small></div>
+      <button title="Log out" aria-label="Log out"><svg class=ic><use href="#i-out"/></svg></button></div></form>
   </aside>
   <main class=main>
     {% for m in get_flashed_messages() %}<div class=flash>{{ m }}</div>{% endfor %}
@@ -17,5 +21,6 @@
   </main>
 </div>
 {% else %}{% block public %}{% endblock %}{% endif %}
+<div class=toast id=toast><svg class=ic><use href="#i-check"/></svg><span>Saved</span></div>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 </html>

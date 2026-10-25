@@ -1,13 +1,27 @@
 {% extends "base.html" %}{% block title %}Sign in · Lead Finder{% endblock %}
 {% block public %}
-<div class=auth><div class=card>
-  <div class=logo><i></i> Lead Finder</div>
-  <p class=sub>Sign in to continue</p>
-  {% for m in get_flashed_messages() %}<div class=flash>{{ m }}</div>{% endfor %}
-  <form method=post>
-    <input type=hidden name=csrf value="{{ csrf }}">
-    <input type=text name=username placeholder=Username autocomplete=username required autofocus>
-    <input type=password name=password placeholder=Password autocomplete=current-password required>
-    <button class=btn>Sign in</button>
-  </form>
-</div></div>{% endblock %}
+<div class=auth>
+  <div class=brand>
+    <div class=logo><i style="background:rgba(255,255,255,.2);box-shadow:none"><svg class=ic><use href="#i-target"/></svg></i><span>Lead Finder</span></div>
+    <div>
+      <h1>Turn Google Maps into your sales pipeline.</h1>
+      <p>Find local businesses, collect their contact details, and track every conversation in one place.</p>
+      <ul>
+        <li><svg class=ic><use href="#i-search"/></svg>Search any keyword across many areas</li>
+        <li><svg class=ic><use href="#i-layers"/></svg>Never see the same business twice</li>
+        <li><svg class=ic><use href="#i-chat"/></svg>Call or WhatsApp in one click</li>
+      </ul>
+    </div>
+    <span style="opacity:.7;font-size:.82rem">Private admin area</span>
+  </div>
+  <div class=formside>
+    <form method=post>
+      <div><h1>Welcome back</h1><p class=sub style="margin:0">Sign in to continue</p></div>
+      {% for m in get_flashed_messages() %}<div class=flash style="margin:0">{{ m }}</div>{% endfor %}
+      <input type=hidden name=csrf value="{{ csrf }}">
+      <input type=text name=username placeholder=Username autocomplete=username required autofocus>
+      <input type=password name=password placeholder=Password autocomplete=current-password required>
+      <button class=btn>Sign in</button>
+    </form>
+  </div>
+</div>{% endblock %}
