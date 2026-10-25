@@ -1,0 +1,15 @@
+{% if pg.total %}
+<div class=pagebar>
+  <span class=hint>Showing {{ pg.start }}–{{ pg.end }} of {{ pg.total }}</span>
+  {% if pg.pages > 1 %}<nav class=pages aria-label=Pagination>
+    <a class="pg {{ 'off' if pg.page==1 }}" href="{{ page_url(pg.page-1) }}" aria-label="Previous page">‹</a>
+    {% for n in pg.window %}{% if n is none %}<span class="pg gap">…</span>{% else %}<a class="pg {{ 'on' if n==pg.page }}" href="{{ page_url(n) }}" {{ 'aria-current=page' if n==pg.page }}>{{ n }}</a>{% endif %}{% endfor %}
+    <a class="pg {{ 'off' if pg.page==pg.pages }}" href="{{ page_url(pg.page+1) }}" aria-label="Next page">›</a>
+  </nav>{% endif %}
+  {% if pg.total > pg.options[0] %}<form method=get class=perpage>
+    {% for k, v in args.items() if k not in ('page', 'per') %}<input type=hidden name="{{ k }}" value="{{ v }}">{% endfor %}
+    <span class=hint>Rows</span>
+    <select name=per data-auto aria-label="Rows per page">{% for o in pg.options %}<option {{ 'selected' if o==pg.per }}>{{ o }}</option>{% endfor %}</select>
+  </form>{% endif %}
+</div>
+{% endif %}

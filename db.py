@@ -87,8 +87,9 @@ def _where(text, status, phone, mobile, search_id, new_only=False, keyword=""):
         w.append("p.place_id IN (SELECT sp.place_id FROM search_places sp JOIN searches s ON s.id=sp.search_id WHERE s.query=?)")
         a.append(keyword)
     if text:
-        w.append("(p.name LIKE ? OR p.address LIKE ? OR p.phone LIKE ? OR p.notes LIKE ?)")
-        a += [f"%{text}%"] * 4
+        w.append("(p.name LIKE ? OR p.address LIKE ? OR p.phone LIKE ? OR p.notes LIKE ? OR p.place_id IN "
+                 "(SELECT sp.place_id FROM search_places sp JOIN searches s ON s.id=sp.search_id WHERE s.query LIKE ?))")
+        a += [f"%{text}%"] * 5
     if status in STATUSES:
         w.append("p.status=?")
         a.append(status)
@@ -126,11 +127,20 @@ def keywords():
             "JOIN search_places sp ON sp.search_id=s.id GROUP BY s.query ORDER BY MAX(s.id) DESC")]
 
 
-def history(limit=20):
+def history(limit=20, offset=0, text=""):
+    where, args = ("WHERE s.query LIKE ?", [f"%{text}%"]) if text else ("", [])
     with tx() as c:
         return [dict(r) for r in c.execute(
             "SELECT s.id, s.query, s.created_at, s.new_count, COUNT(sp.place_id) n FROM searches s "
-            "LEFT JOIN search_places sp ON sp.search_id=s.id GROUP BY s.id ORDER BY s.id DESC LIMIT ?", (limit,))]
+            f"LEFT JOIN search_places sp ON sp.search_id=s.id {where} GROUP BY s.id ORDER BY s.id DESC LIMIT ? OFFSET ?",
+            args + [limit, offset])]
+
+
+def count_searches(text=""):
+    with tx() as c:
+        if text:
+            return c.execute("SELECT COUNT(*) FROM searches WHERE query LIKE ?", (f"%{text}%",)).fetchone()[0]
+        return c.execute("SELECT COUNT(*) FROM searches").fetchone()[0]
 
 
 def stats():

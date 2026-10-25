@@ -1,6 +1,6 @@
 <form method=get class=toolbar>
   {% if scope is defined %}<input type=hidden name=scope value="{{ scope }}">{% endif %}
-  <div class=grow><svg class="ic sm"><use href="#i-search"/></svg><input type=search name=q value="{{ f.text }}" placeholder="Search name, address, phone, notes"></div>
+  <div class=grow><svg class="ic sm"><use href="#i-search"/></svg><input type=search name=q value="{{ f.text }}" placeholder="Search name, address, phone, notes or keyword"></div>
   <button class="btn sm">Apply</button>
   <a class="btn ghost sm" href="{{ csv_url }}"><svg class="ic sm"><use href="#i-dl"/></svg>Export CSV</a>
   <div class=break></div>

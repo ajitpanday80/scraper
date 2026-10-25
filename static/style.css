@@ -186,3 +186,14 @@ a.tag:hover{text-decoration:none;background:color-mix(in srgb,var(--brand) 22%,t
 .item .t span.hint{white-space:nowrap}
 .item.confirming .pill{display:none}
 @media(max-width:820px){.break{display:none}}
+
+/* pagination */
+.pagebar{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;padding:.85rem 1rem;border-top:1px solid var(--line)}
+.pages{display:flex;gap:.3rem;align-items:center;flex-wrap:wrap}
+.pg{min-width:34px;height:34px;display:inline-grid;place-items:center;padding:0 .55rem;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-weight:650;font-size:.88rem}
+a.pg:hover{background:var(--soft);text-decoration:none}
+.pg.on{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;border-color:transparent;box-shadow:0 6px 14px -6px rgba(91,91,240,.8)}
+.pg.off{opacity:.4;pointer-events:none}.pg.gap{border:0;background:none;min-width:auto;padding:0 .2rem;color:var(--muted)}
+.perpage{display:flex;gap:.5rem;align-items:center}.perpage .dd{min-width:84px}
+.card.flush>.list .empty{padding:2.5rem 1rem}
+@media(max-width:820px){.pagebar{justify-content:center}}

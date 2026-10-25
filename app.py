@@ -42,11 +42,31 @@ app.jinja_env.filters["initial"] = lambda s: next((c for c in (s or "") if c.isa
 app.jinja_env.filters["tel"] = lambda s: re.sub(r"[^\d+]", "", s or "")
 
 
+def page_url(n):
+    """URL of the current page with ?page=n, keeping every other filter."""
+    args = {**(request.view_args or {}), **request.args.to_dict(), "page": max(n, 1)}
+    return url_for(request.endpoint, **args)
+
+
+def _pager(total, page, per, options):
+    pages = max((total + per - 1) // per, 1)
+    page = min(max(page, 1), pages)
+    near = sorted({1, pages, *range(max(page - 1, 1), min(page + 1, pages) + 1)})
+    window, prev = [], 0
+    for n in near:
+        if prev and n - prev > 1:
+            window.append(None)  # shown as an ellipsis
+        window.append(n)
+        prev = n
+    return dict(page=page, pages=pages, total=total, per=per, options=options, window=window,
+                start=(page - 1) * per + 1 if total else 0, end=min(page * per, total))
+
+
 @app.context_processor
 def inject():
     if "csrf" not in session:
         session["csrf"] = secrets.token_hex(16)
-    return {"csrf": session["csrf"], "statuses": db.STATUSES}
+    return {"csrf": session["csrf"], "statuses": db.STATUSES, "page_url": page_url}
 
 
 @app.before_request
@@ -178,18 +198,39 @@ def _filters():
                 sort=request.args.get("sort", "newest"), keyword=request.args.get("kw", "").strip())
 
 
+LEAD_PER = (25, 50, 100)
+
+
 def _paged(search_id=None, new_only=False):
     f = _filters()
+    per = request.args.get("per", type=int)
+    per = per if per in LEAD_PER else 50
     page = max(request.args.get("page", 1, type=int), 1)
-    rows, total = db.query_places(**f, page=page, search_id=search_id, new_only=new_only)
-    pages = max((total + 49) // 50, 1)
+    rows, total = db.query_places(**f, page=page, per_page=per, search_id=search_id, new_only=new_only)
+    pg = _pager(total, page, per, LEAD_PER)
+    if pg["page"] != page:  # asked for a page past the end
+        rows, _ = db.query_places(**f, page=pg["page"], per_page=per, search_id=search_id, new_only=new_only)
     args = {k: v for k, v in request.args.items() if k != "page"}
-    return dict(rows=rows, total=total, page=page, pages=pages, f=f, args=args)
+    return dict(rows=rows, total=total, f=f, args=args, pg=pg)
 
 
 @app.get("/leads")
 def leads():
     return render_template("leads.html", kws=db.keywords(), **_paged())
+
+
+SEARCH_PER = (10, 20, 50)
+
+
+@app.get("/searches")
+def searches():
+    text = request.args.get("q", "").strip()
+    per = request.args.get("per", type=int)
+    per = per if per in SEARCH_PER else 20
+    pg = _pager(db.count_searches(text), request.args.get("page", 1, type=int), per, SEARCH_PER)
+    hist = db.history(per, (pg["page"] - 1) * per, text)
+    args = {k: v for k, v in request.args.items() if k != "page"}
+    return render_template("searches.html", hist=hist, pg=pg, args=args, q=text)
 
 
 @app.get("/favicon.ico")
@@ -210,7 +251,8 @@ def view(sid):
 def delete(sid):
     db.delete_search(sid)
     flash("Search deleted. Leads you had worked on were kept.")
-    return redirect(url_for("index"))
+    back = request.form.get("back", "")
+    return redirect(back if back.startswith("/") and not back.startswith("//") else url_for("index"))
 
 
 @app.post("/lead/<pid>")

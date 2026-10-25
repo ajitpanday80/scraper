@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% block title %}Searches · Lead Finder{% endblock %}{% block body %}
+<div class=top><div><h1>Searches</h1><p class=sub>{{ pg.total }} searches{% if q %} matching “{{ q }}”{% endif %}. Open one to see the businesses it found.</p></div></div>
+<div class="card flush">
+  <form method=get class=toolbar>
+    <div class=grow><svg class="ic sm"><use href="#i-search"/></svg><input type=search name=q value="{{ q }}" placeholder="Filter by keyword"></div>
+    <button class="btn sm">Filter</button>
+  </form>
+  <div class=list>{% for h in hist %}{% include "_search_item.html" %}{% else %}<div class=empty><b>No searches found</b>{% if q %}Try a different keyword.{% else %}Run your first search from the dashboard.{% endif %}</div>{% endfor %}</div>
+  {% include "_pagebar.html" %}
+</div>{% endblock %}

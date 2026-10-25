@@ -17,4 +17,4 @@
   <td data-label=Notes><input class=notes type=text data-pid="{{ r.place_id }}" value="{{ r.notes or '' }}" placeholder="Add a note…" maxlength=2000 aria-label="Notes">
 </tr>{% else %}<tr><td colspan=5><div class=empty><b>No leads match</b>Try clearing a filter.</div></tr>{% endfor %}
 </tbody></table></div>
-{% include "_pager.html" %}
+{% include "_pagebar.html" %}

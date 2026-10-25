@@ -169,3 +169,50 @@ def test_favicon_public_and_no_browser_popups(client):
         src = f.read_text()
         for bad in ("alert(", "confirm(", "prompt(", "onsubmit=", "window.open"):
             assert bad not in src, f"{bad} found in {f}"
+
+
+def test_pager_window():
+    w = lambda page, pages: appmod._pager(pages * 10, page, 10, (10,))["window"]
+    assert w(1, 1) == [1] and w(1, 3) == [1, 2, 3]
+    assert w(1, 20) == [1, 2, None, 20] and w(10, 20) == [1, None, 9, 10, 11, None, 20] and w(20, 20) == [1, None, 19, 20]
+    assert appmod._pager(0, 5, 10, (10,))["start"] == 0 and appmod._pager(25, 3, 10, (10,))["end"] == 25
+
+
+def test_leads_pagination_and_page_clamp(client):
+    db.save("bulk", [P(f"p{i:03d}", f"Biz {i:03d}") for i in range(60)])
+    login(client)
+    get = lambda url: client.get(url).get_data(as_text=True)
+    p1, p2 = get("/leads?sort=name"), get("/leads?sort=name&page=2")
+    assert "Showing 1–50 of 60" in p1 and "Biz 049" in p1 and "Biz 050" not in p1
+    assert "Showing 51–60 of 60" in p2 and "Biz 050" in p2 and "Biz 049" not in p2
+    assert "Showing 51–60 of 60" in get("/leads?sort=name&page=99")      # past the end -> last page
+    assert "Showing 1–25 of 60" in get("/leads?per=25") and "Showing 1–50 of 60" in get("/leads?per=7")  # bad per ignored
+    assert "page=2" in p1 and "sort=name" in p1                           # links keep filters
+    assert get("/leads?q=zzz").count("Showing") == 0                      # no pager when empty
+    assert get(f"/search/1?scope=all&sort=name&page=2").count("Biz 050") >= 1  # results page paginates too
+    assert b"Biz 059" in client.get("/leads.csv").data and client.get("/leads.csv").data.count(b"Biz ") == 60  # export ignores paging
+
+
+def test_text_search_matches_keyword_used(client):
+    db.save("tiffin service in gurgaon", [P("a", "Alpha Foods")])
+    db.save("dhaba in delhi", [P("b", "Beta Kitchen")])
+    names = lambda q: [r["name"] for r in db.query_places(text=q)[0]]
+    assert names("tiffin") == ["Alpha Foods"] and names("dhaba") == ["Beta Kitchen"] and names("Kitchen") == ["Beta Kitchen"]
+    login(client)
+    assert "Alpha Foods" in client.get("/leads?q=tiffin").get_data(as_text=True)
+
+
+def test_searches_page_paginates_filters_and_deletes(client):
+    for i in range(25):
+        db.save(f"keyword {i:02d}", [P(f"x{i}", f"N{i}")])
+    login(client)
+    get = lambda url: client.get(url).get_data(as_text=True)
+    page1, page2 = get("/searches"), get("/searches?page=2")
+    assert "Showing 1–20 of 25" in page1 and "keyword 24" in page1 and "keyword 04" not in page1
+    assert "Showing 21–25 of 25" in page2 and "keyword 04" in page2
+    assert "Showing 1–1 of 1" in get("/searches?q=keyword+07") and "keyword 08" not in get("/searches?q=keyword+07")
+    assert "View all 25" in get("/")
+    r = post(client, "/search/1/delete", back="/searches?page=2")
+    assert r.status_code == 302 and r.headers["Location"].endswith("/searches?page=2")
+    assert post(client, "/search/2/delete", back="//evil.example").headers["Location"].endswith("/")  # no open redirect
+    assert db.count_searches() == 23

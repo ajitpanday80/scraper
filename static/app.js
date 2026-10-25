@@ -25,7 +25,7 @@
     var t = e.target;
     if (t.matches('select.st')) { t.dataset.s = t.value; save(t.dataset.pid, { status: t.value }, t); }
     else if (t.matches('input.notes')) save(t.dataset.pid, { notes: t.value }, t);
-    else if (t.closest('form.toolbar') && t.hasAttribute('data-auto')) t.closest('form').submit();
+    else if (t.hasAttribute('data-auto') && t.closest('form')) t.closest('form').submit();
   });
 
   /* ---------- copy ---------- */
@@ -52,8 +52,14 @@
     openMenu = null;
   }
   document.addEventListener('mousedown', function (e) { if (openMenu && !openMenu.menu.contains(e.target) && !openMenu.btn.contains(e.target)) closeMenu(); });
-  window.addEventListener('resize', function () { closeMenu(); });
-  window.addEventListener('scroll', function (e) { if (openMenu && !openMenu.menu.contains(e.target)) closeMenu(); }, true);
+  function follow(e) {  // keep the menu attached to its button; close only if the button scrolls out of view
+    if (!openMenu || (e && openMenu.menu.contains(e.target))) return;
+    var r = openMenu.btn.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > window.innerHeight) return closeMenu();
+    openMenu.place();
+  }
+  window.addEventListener('resize', follow);
+  window.addEventListener('scroll', follow, true);
 
   function enhance(sel) {
     if (sel.dataset.ddDone) return; sel.dataset.ddDone = '1';
@@ -93,11 +99,14 @@
         menu.appendChild(it);
       });
       document.body.appendChild(menu);
-      var r = btn.getBoundingClientRect(), mh = Math.min(menu.scrollHeight, 300);
-      menu.style.minWidth = Math.max(r.width, 170) + 'px';
-      menu.style.left = Math.min(r.left, window.innerWidth - menu.offsetWidth - 8) + 'px';
-      menu.style.top = (window.innerHeight - r.bottom < mh + 12 && r.top > mh + 12 ? r.top - mh - 6 : r.bottom + 6) + 'px';
-      btn.setAttribute('aria-expanded', 'true'); openMenu = { menu: menu, btn: btn };
+      function place() {
+        var r = btn.getBoundingClientRect(), mh = Math.min(menu.scrollHeight, 300);
+        menu.style.minWidth = Math.max(r.width, 170) + 'px';
+        menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
+        menu.style.top = (window.innerHeight - r.bottom < mh + 12 && r.top > mh + 12 ? r.top - mh - 6 : r.bottom + 6) + 'px';
+      }
+      place();
+      btn.setAttribute('aria-expanded', 'true'); openMenu = { menu: menu, btn: btn, place: place };
       var sel_ = menu.querySelector('[aria-selected=true]') || menu.firstChild;
       if (focusSelected) sel_.focus(); else if (sel_.scrollIntoView) sel_.scrollIntoView({ block: 'nearest' });
       menu.addEventListener('keydown', function (e) {
