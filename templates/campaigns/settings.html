@@ -15,7 +15,7 @@
   </div></div>
 
 <div class=card><h2>Audience</h2>
-  <p class=hint style="margin-top:-.4rem">Leads found by the keywords you tick below will be messaged. <b>{{ audience }}</b> leads qualify right now with the saved settings.</p>
+  <p class=hint style="margin-top:-.4rem">Leads found by the keywords you tick below will be messaged. Leads without a phone number are always skipped. <b>{{ audience }}</b> leads qualify right now with the saved settings.</p>
   <div class=toolbar style="border:0;padding:0 0 .6rem"><div class=grow><svg class="ic sm"><use href="#i-search"/></svg><input type=search placeholder="Filter keywords" data-filter="#kwlist"></div></div>
   <div class=kwlist id=kwlist>
     {% for k in all_keywords %}<label class=chk><input type=checkbox name=kw value="{{ k.keyword }}" {{ 'checked' if k.keyword in c.keywords }}> <span>{{ k.keyword }}</span><em>{{ k.n }} leads</em></label>

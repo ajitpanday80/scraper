@@ -194,18 +194,24 @@ def validate(form, known_keywords):
 
 
 # ---------- audience ----------
+def valid_phone(digits):
+    """A sendable number: 11-15 digits, country code included."""
+    return bool(re.fullmatch(r"\d{11,15}", digits or ""))
+
+
 def _audience(c, now):
     q = lambda xs: ",".join("?" * len(xs))
-    w = ["COALESCE(p.intl_phone,'') != ''",
+    num = "replace(replace(replace(COALESCE(p.intl_phone,''),' ',''),'+',''),'-','')"
+    # Leads without a real phone number are never messaged: same rule as valid_phone().
+    w = [f"length({num}) BETWEEN 11 AND 15", f"{num} NOT GLOB '*[^0-9]*'",
          f"COALESCE(p.status,'New') IN ({q(c['statuses'])})",
          f"p.place_id IN (SELECT sp.place_id FROM search_places sp JOIN searches s ON s.id=sp.search_id WHERE s.query IN ({q(c['keywords'])}))",
          "NOT EXISTS (SELECT 1 FROM messages m WHERE m.campaign_id=? AND m.place_id=p.place_id)",
-         "NOT EXISTS (SELECT 1 FROM optouts o WHERE o.phone = replace(replace(replace(p.intl_phone,' ',''),'+',''),'-',''))"]
+         f"NOT EXISTS (SELECT 1 FROM optouts o WHERE o.phone = {num})"]
     a = [*c["statuses"], *c["keywords"], c["id"]]
     if c["mobile_only"]:
         w.append("p.intl_phone GLOB '+91 [6-9]*'")
     # Per-person limits count real sends to the same phone number across ALL campaigns (test-mode sends don't count).
-    num = "replace(replace(replace(p.intl_phone,' ',''),'+',''),'-','')"
     w.append(f"(SELECT COUNT(*) FROM messages m3 WHERE m3.phone = {num} AND m3.status IN ('sent','sending')) < ?")
     a.append(c["max_messages"])
     w.append(f"NOT EXISTS (SELECT 1 FROM messages m2 WHERE m2.phone = {num} AND m2.status IN ('sent','sending') AND m2.sent_at > ?)")

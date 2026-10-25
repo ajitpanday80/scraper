@@ -37,6 +37,9 @@ def process(c, now, sender=None):
     reason, job = camp.claim_next(c, now)
     if reason != "ready":
         return reason
+    if not camp.valid_phone(job["phone"]):  # last line of defence: never hand a lead without a number to a sender
+        camp.finish_message(job["id"], "failed", "no valid phone number")
+        return "no_phone"
     sender = sender or senders.get(c["channel"])
     try:
         res = sender.send(job["phone"], job["text"], camp.media(c["id"]), job["variant"])

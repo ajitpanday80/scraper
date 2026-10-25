@@ -355,3 +355,37 @@ def test_limits_hold_end_to_end_across_campaigns(tmp_path, monkeypatch):
     assert run(ids[3], 400) == "no_audience"          # ... even much later
     with db.tx() as t:
         assert t.execute("SELECT COUNT(*) FROM messages WHERE status='sent'").fetchone()[0] == 3
+
+
+def test_leads_without_a_phone_number_are_never_messaged(env):
+    """Missing, blank, partial or malformed numbers are excluded, with mobile-only on or off."""
+    bad = [("n1", ""), ("n2", None), ("n3", "+91"), ("n4", "+91 98"), ("n5", "   "), ("n6", "+91 98765 4321x"), ("n7", "call us")]
+    with db.tx() as t:
+        for pid, intl in bad:
+            t.execute("INSERT INTO places(place_id,name,phone,intl_phone,status) VALUES (?,?,?,?,'New')", (pid, f"No phone {pid}", "098", intl))
+            t.execute("INSERT INTO search_places VALUES (1,?,1)", (pid,))
+    for mobile_only in (1, 0):
+        with db.tx() as t:
+            t.execute("UPDATE campaigns SET mobile_only=?, per_hour=3600 WHERE id=?", (mobile_only, env))
+        assert camp.audience_count(C(env), MON_11AM) == 8                  # only the 8 leads with real numbers
+    for i in range(12):                                                     # run the whole audience through the scheduler
+        scheduler.tick(MON_11AM + datetime.timedelta(seconds=2 * i))
+    sent = camp.log(env, 1, 100)[0]
+    assert len(sent) == 8 and not any(m["place_id"].startswith("n") for m in sent)
+    assert all(camp.valid_phone(m["phone"]) for m in sent)
+
+
+def test_sender_is_never_called_without_a_valid_number(env, monkeypatch):
+    with db.tx() as t:
+        mid = t.execute("INSERT INTO messages(campaign_id, place_id, phone, status, sent_at) VALUES (?,?,?,?,?)",
+                        (env, "p1", "", "sending", camp.fmt(MON_11AM))).lastrowid
+    monkeypatch.setattr(camp, "claim_next", lambda c, now: ("ready", {"id": mid, "place_id": "p1", "phone": "", "text": "x", "variant": {}}))
+    called = []
+
+    class Spy:
+        def send(self, *a):
+            called.append(a)
+            return senders.Result(ok=True)
+    assert scheduler.process(C(env), MON_11AM, Spy()) == "no_phone"
+    assert called == [] and camp.log(env, 1, 5)[0][0]["error"] == "no valid phone number"
+    assert camp.valid_phone("919876543210") and not camp.valid_phone("91987") and not camp.valid_phone("91 98765 43210")
