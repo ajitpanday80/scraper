@@ -77,12 +77,15 @@ def search_info(sid):
     return {**dict(r), "total": total, "known": total - (r["new_count"] or 0)}
 
 
-def _where(text, status, phone, mobile, search_id, new_only=False):
+def _where(text, status, phone, mobile, search_id, new_only=False, keyword=""):
     w, a = ["1=1"], []
     if search_id is not None:
         w.append("p.place_id IN (SELECT place_id FROM search_places WHERE search_id=?"
                  + (" AND is_new=1)" if new_only else ")"))
         a.append(search_id)
+    if keyword:
+        w.append("p.place_id IN (SELECT sp.place_id FROM search_places sp JOIN searches s ON s.id=sp.search_id WHERE s.query=?)")
+        a.append(keyword)
     if text:
         w.append("(p.name LIKE ? OR p.address LIKE ? OR p.phone LIKE ? OR p.notes LIKE ?)")
         a += [f"%{text}%"] * 4
@@ -97,18 +100,30 @@ def _where(text, status, phone, mobile, search_id, new_only=False):
 
 
 def query_places(text="", status="", phone=False, mobile=False, sort="newest",
-                 page=1, per_page=50, search_id=None, new_only=False):
+                 page=1, per_page=50, search_id=None, new_only=False, keyword=""):
     """Return (rows, total). per_page=None returns everything (for export)."""
-    where, args = _where(text, status, phone, mobile, search_id, new_only)
+    where, args = _where(text, status, phone, mobile, search_id, new_only, keyword)
     order = SORTS.get(sort, SORTS["newest"])
-    sql = f"SELECT p.* FROM places p WHERE {where} ORDER BY {order}"
+    sql = (f"SELECT p.*, (SELECT GROUP_CONCAT(q, char(31)) FROM (SELECT DISTINCT s.query AS q FROM search_places sp "
+           f"JOIN searches s ON s.id=sp.search_id WHERE sp.place_id=p.place_id)) AS tags "
+           f"FROM places p WHERE {where} ORDER BY {order}")
     with tx() as c:
         total = c.execute(f"SELECT COUNT(*) FROM places p WHERE {where}", args).fetchone()[0]
         if per_page:
             sql += " LIMIT ? OFFSET ?"
             args = args + [per_page, (max(page, 1) - 1) * per_page]
         rows = [dict(r) for r in c.execute(sql, args)]
+    for r in rows:
+        r["tags"] = r["tags"].split("\x1f") if r["tags"] else []
     return rows, total
+
+
+def keywords():
+    """Every keyword searched so far with the number of distinct leads it found, newest first."""
+    with tx() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT s.query AS keyword, COUNT(DISTINCT sp.place_id) AS n FROM searches s "
+            "JOIN search_places sp ON sp.search_id=s.id GROUP BY s.query ORDER BY MAX(s.id) DESC")]
 
 
 def history(limit=20):

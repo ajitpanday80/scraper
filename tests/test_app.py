@@ -143,3 +143,29 @@ def test_search_with_nothing_new_shows_message(client):
     login(client)
     page = client.get(f"/search/{s2}").get_data(as_text=True)
     assert n == 0 and "Nothing new this time" in page and "Show them anyway" in page
+
+
+def test_filter_leads_by_keyword(client):
+    db.save("tiffin service in gurgaon", [P("a", "Alpha"), P("b", "Beta")])
+    db.save("dhaba in delhi", [P("b", "Beta"), P("c", "Gamma")])
+    names = lambda kw: sorted(r["name"] for r in db.query_places(keyword=kw)[0])
+    assert names("tiffin service in gurgaon") == ["Alpha", "Beta"]
+    assert names("dhaba in delhi") == ["Beta", "Gamma"]
+    assert names("") == ["Alpha", "Beta", "Gamma"]
+    beta = [r for r in db.query_places()[0] if r["name"] == "Beta"][0]
+    assert sorted(beta["tags"]) == ["dhaba in delhi", "tiffin service in gurgaon"]
+    assert [k["keyword"] for k in db.keywords()] == ["dhaba in delhi", "tiffin service in gurgaon"]
+    login(client)
+    page = client.get("/leads?kw=dhaba+in+delhi").get_data(as_text=True)
+    assert "Gamma" in page and "Alpha" not in page and "All keywords" in page
+    csvdata = client.get("/leads.csv?kw=dhaba+in+delhi").get_data(as_text=True)
+    assert "keywords" in csvdata.splitlines()[0] and "dhaba in delhi" in csvdata and "Alpha" not in csvdata
+
+
+def test_favicon_public_and_no_browser_popups(client):
+    assert client.get("/favicon.ico").status_code == 200 and client.get("/static/favicon.svg").status_code == 200
+    import pathlib
+    for f in list(pathlib.Path("templates").glob("*.html")) + list(pathlib.Path("static").glob("*.js")):
+        src = f.read_text()
+        for bad in ("alert(", "confirm(", "prompt(", "onsubmit=", "window.open"):
+            assert bad not in src, f"{bad} found in {f}"

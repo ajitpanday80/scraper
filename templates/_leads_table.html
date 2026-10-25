@@ -4,6 +4,7 @@
   <td class=nolabel><div class=who><div class=av style="--h:{{ r.name|hue }}">{{ r.name|initial }}</div>
     <div><div class=name>{{ r.name }}</div>
     {% if r.rating %}<div class=sub-rate><span class=rate><svg class=ic><use href="#i-star"/></svg>{{ r.rating }}</span> <span class=hint>({{ r.rating_count or 0 }} reviews)</span></div>{% endif %}
+    {% if r.tags %}<div class=tags>{% for k in r.tags[:2] %}<a class=tag href="{{ url_for('leads', kw=k) }}" title="Show all leads found by this keyword">{{ k }}</a>{% endfor %}{% if r.tags|length > 2 %}<span class=tag title="{{ r.tags[2:]|join(', ') }}">+{{ r.tags|length - 2 }}</span>{% endif %}</div>{% endif %}
     {% if r.maps_url %}<div class=acts><a class=act href="{{ r.maps_url }}" target=_blank rel=noopener><svg class="ic sm"><use href="#i-pin"/></svg>Map</a></div>{% endif %}</div></div>
   <td data-label=Phone>{% if r.phone %}<div class=phone>{{ r.phone }}</div>
     <div class=acts>

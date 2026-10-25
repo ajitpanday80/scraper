@@ -55,7 +55,7 @@ def guard():
         sent = request.form.get("csrf") or request.headers.get("X-CSRF", "")
         if not _eq(sent, session.get("csrf", "x")):
             abort(400, "Bad CSRF token")
-    if request.endpoint not in ("login", "static") and not session.get("admin"):
+    if request.endpoint not in ("login", "static", "favicon") and not session.get("admin"):
         return redirect(url_for("login"))
 
 
@@ -175,7 +175,7 @@ def index():
 def _filters():
     return dict(text=request.args.get("q", "").strip(), status=request.args.get("status", ""),
                 phone=request.args.get("phone") == "1", mobile=request.args.get("mobile") == "1",
-                sort=request.args.get("sort", "newest"))
+                sort=request.args.get("sort", "newest"), keyword=request.args.get("kw", "").strip())
 
 
 def _paged(search_id=None, new_only=False):
@@ -189,7 +189,12 @@ def _paged(search_id=None, new_only=False):
 
 @app.get("/leads")
 def leads():
-    return render_template("leads.html", **_paged())
+    return render_template("leads.html", kws=db.keywords(), **_paged())
+
+
+@app.get("/favicon.ico")
+def favicon():
+    return app.send_static_file("favicon.png")
 
 
 @app.get("/search/<int:sid>")
@@ -224,7 +229,8 @@ def lead(pid):
 # ---------- export ----------
 def _csv(rows, name):
     buf = io.StringIO()
-    fields = ["name", "phone", "intl_phone", "address", "rating", "rating_count", "status", "notes", "maps_url"]
+    fields = ["name", "phone", "intl_phone", "address", "rating", "rating_count", "status", "notes", "keywords", "maps_url"]
+    rows = [{**r, "keywords": "; ".join(r.get("tags", []))} for r in rows]
     w = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
     w.writeheader()
     w.writerows(rows)

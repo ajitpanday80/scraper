@@ -41,7 +41,9 @@
       <div class=t><a href="{{ url_for('view', sid=h.id) }}">{{ h.query }}</a><span class=hint>{{ h.created_at }} UTC</span></div>
       <span class="pill ok" title="New leads added">{{ h.new_count }} new</span>
       <span class=pill title="Already in your system">{{ h.n - h.new_count }} known</span>
-      <form method=post action="{{ url_for('delete', sid=h.id) }}" onsubmit="return confirm('Delete this search? Leads you worked on are kept.')"><input type=hidden name=csrf value="{{ csrf }}"><button class=icon-btn title="Delete" aria-label="Delete search"><svg class="ic sm"><use href="#i-trash"/></svg></button></form>
+      <form method=post action="{{ url_for('delete', sid=h.id) }}" class=delform><input type=hidden name=csrf value="{{ csrf }}">
+        <button type=button class=icon-btn data-reveal title="Delete" aria-label="Delete search"><svg class="ic sm"><use href="#i-trash"/></svg></button>
+        <span class=confirm hidden><span class=hint>Delete this search?</span><button class="btn danger sm">Yes, delete</button><button type=button class="btn ghost sm" data-cancel>Cancel</button></span></form>
     </div>{% else %}<div class=empty><b>No searches yet</b>Run your first search above.</div>{% endfor %}
     </div>
   </div>
