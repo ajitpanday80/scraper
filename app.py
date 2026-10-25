@@ -10,12 +10,16 @@ import time
 from flask import (Flask, Response, abort, flash, jsonify, redirect,
                    render_template, request, session, url_for)
 
+import camp
 import db
+import scheduler
+from campaign_routes import bp as campaign_bp
+from paging import pager as _pager
 from places import PlacesError, search
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)  # set SECRET_KEY to keep sessions across restarts
-app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+app.config.update(MAX_CONTENT_LENGTH=30 * 1024 * 1024, SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
                   SESSION_COOKIE_SECURE=os.environ.get("COOKIE_SECURE") == "1")
 
 ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
@@ -39,6 +43,8 @@ def wa_number(intl):
 app.jinja_env.filters["wa"] = wa_number
 app.jinja_env.filters["hue"] = lambda s: sum(map(ord, s or "?")) % 360
 app.jinja_env.filters["initial"] = lambda s: next((c for c in (s or "") if c.isalnum()), "?").upper()
+app.jinja_env.filters["local_input"] = camp.utc_to_input
+app.jinja_env.filters["human"] = camp.human
 app.jinja_env.filters["tel"] = lambda s: re.sub(r"[^\d+]", "", s or "")
 
 
@@ -46,20 +52,6 @@ def page_url(n):
     """URL of the current page with ?page=n, keeping every other filter."""
     args = {**(request.view_args or {}), **request.args.to_dict(), "page": max(n, 1)}
     return url_for(request.endpoint, **args)
-
-
-def _pager(total, page, per, options):
-    pages = max((total + per - 1) // per, 1)
-    page = min(max(page, 1), pages)
-    near = sorted({1, pages, *range(max(page - 1, 1), min(page + 1, pages) + 1)})
-    window, prev = [], 0
-    for n in near:
-        if prev and n - prev > 1:
-            window.append(None)  # shown as an ellipsis
-        window.append(n)
-        prev = n
-    return dict(page=page, pages=pages, total=total, per=per, options=options, window=window,
-                start=(page - 1) * per + 1 if total else 0, end=min(page * per, total))
 
 
 @app.context_processor
@@ -294,6 +286,15 @@ def csv_search(sid):
     new_only = request.args.get("scope") != "all"
     rows, _ = db.query_places(**_filters(), per_page=None, search_id=sid, new_only=new_only)
     return _csv(rows, f"search-{sid}")
+
+
+app.register_blueprint(campaign_bp)
+scheduler.start_background()
+
+
+@app.errorhandler(413)
+def too_large(_):
+    return "That file is too large (25 MB maximum). Go back and choose a smaller one.", 413
 
 
 if __name__ == "__main__":

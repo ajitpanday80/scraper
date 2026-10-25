@@ -125,6 +125,17 @@
   }
   Array.prototype.forEach.call(document.querySelectorAll('select'), enhance);
 
+  /* ---------- keyword filter + busy buttons ---------- */
+  document.addEventListener('input', function (e) {
+    if (!e.target.matches('[data-filter]')) return;
+    var q = e.target.value.toLowerCase();
+    Array.prototype.forEach.call(document.querySelectorAll(e.target.dataset.filter + ' .chk'), function (l) { l.hidden = l.textContent.toLowerCase().indexOf(q) < 0; });
+  });
+  document.addEventListener('submit', function (e) {
+    var b = e.target.getAttribute && e.target.getAttribute('data-busy'); if (!b) return;
+    var btn = e.target.querySelector('button.btn'); if (btn) { btn.textContent = b; btn.disabled = true; }
+  });
+
   /* ---------- search job progress ---------- */
   var j = document.getElementById('job');
   if (j) {

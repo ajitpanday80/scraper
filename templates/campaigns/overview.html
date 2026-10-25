@@ -1,0 +1,68 @@
+{% extends "base.html" %}{% block title %}{{ c.name }} · Lead Finder{% endblock %}{% block body %}
+{% include "campaigns/_tabs.html" %}
+{% if c.channel == 'test' %}<div class="flash info"><b>Test mode.</b> Messages are simulated and nothing is sent to anyone. Lead statuses are not changed. Use this to check your audience, schedule and rotation before connecting a real provider.</div>{% endif %}
+
+<div class=card>
+  <div class=head>
+    <div><h2 style="margin:0 0 .2rem">{{ state[0] }}</h2><p class=hint style="margin:0">{{ state[2] }}</p></div>
+    <div class=actions>
+      {% if c.status == 'active' %}
+        <form method=post action="{{ url_for('camp.control', cid=c.id, action='pause') }}"><input type=hidden name=csrf value="{{ csrf }}"><button class="btn ghost sm">Pause</button></form>
+      {% endif %}
+      {% if c.status in ('active', 'paused') %}
+        <form method=post action="{{ url_for('camp.control', cid=c.id, action='stop') }}" class=delform><input type=hidden name=csrf value="{{ csrf }}">
+          <button type=button class="btn ghost sm" data-reveal>Stop</button>
+          <span class=confirm hidden><span class=hint>Stop for good?</span><button class="btn danger sm">Yes, stop</button><button type=button class="btn ghost sm" data-cancel>Cancel</button></span></form>
+      {% endif %}
+      {% if c.channel == 'test' and stats.test %}
+        <form method=post action="{{ url_for('camp.control', cid=c.id, action='reset-test') }}"><input type=hidden name=csrf value="{{ csrf }}"><button class="btn ghost sm">Clear test run</button></form>
+      {% endif %}
+      {% if c.status != 'active' %}
+        <form method=post action="{{ url_for('camp.control', cid=c.id, action='delete') }}" class=delform><input type=hidden name=csrf value="{{ csrf }}">
+          <button type=button class="icon-btn" data-reveal title="Delete campaign" aria-label="Delete campaign"><svg class="ic sm"><use href="#i-trash"/></svg></button>
+          <span class=confirm hidden><span class=hint>Delete this campaign?</span><button class="btn danger sm">Yes, delete</button><button type=button class="btn ghost sm" data-cancel>Cancel</button></span></form>
+      {% endif %}
+    </div>
+  </div>
+  {% if c.status in ('draft', 'paused', 'completed') %}
+  <form method=post action="{{ url_for('camp.control', cid=c.id, action='start') }}" style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--line)">
+    <input type=hidden name=csrf value="{{ csrf }}">
+    <label class=chk style="margin-bottom:.8rem"><input type=checkbox name=ack value=1> <span>I confirm I am allowed to message these contacts, and my messages include a way to opt out.</span></label>
+    <button class=btn>{{ 'Resume campaign' if c.status == 'paused' else 'Start campaign' }}</button>
+    <span class=hint style="margin-left:.6rem">Sending follows your daily window, days and rate limits.</span>
+  </form>
+  {% endif %}
+</div>
+
+<div class=grid>
+  <div class=stat style="--c:#10b981"><div class=chip-ic><svg class=ic><use href="#i-send"/></svg></div><div><b>{{ stats.sent + stats.test }}</b><span>{{ 'Simulated sends' if stats.test and not stats.sent else 'Messages sent' }}</span></div></div>
+  <div class=stat style="--c:#ef4444"><div class=chip-ic><svg class=ic><use href="#i-zap"/></svg></div><div><b>{{ stats.failed }}</b><span>Failed</span></div></div>
+  <div class=stat style="--c:#5b5bf0"><div class=chip-ic><svg class=ic><use href="#i-users"/></svg></div><div><b>{{ audience }}</b><span>Leads waiting</span></div></div>
+  <div class=stat style="--c:#f59e0b"><div class=chip-ic><svg class=ic><use href="#i-layers"/></svg></div><div style="flex:1"><b>{{ stats.today }}<small style="font-size:.9rem;color:var(--muted);font-weight:500"> / {{ c.daily_cap }}</small></b><span>Today</span>
+    <div class=bar><i style="width:{{ [100, (100*stats.today/c.daily_cap)|int]|min }}%"></i></div></div></div>
+</div>
+
+<div class=cols>
+  <div class=card><h2>Message variants</h2>
+    {% for v in variants %}<div class=vrow><span class="pill {{ 'ok' if v.approved else '' }}">V{{ loop.index }}{{ ' · approved' if v.approved else ' · draft' }}</span>
+      <span class=vtxt>{{ v.body|truncate(110) }}</span><b>{{ v.sent }}</b></div>
+    {% else %}<p class=hint>No messages yet. <a href="{{ url_for('camp.messages', cid=c.id) }}">Write or generate some</a>.</p>{% endfor %}
+    <p class=hint style="margin-top:.8rem">Approved variants are used in turn, least-used first.</p></div>
+  <div class=card><h2>Plan</h2>
+    <dl class=facts>
+      <dt>Keywords</dt><dd>{% if c.keywords %}<div class=tags>{% for k in c.keywords %}<span class=tag>{{ k }}</span>{% endfor %}</div>{% else %}<a href="{{ url_for('camp.settings', cid=c.id) }}">Choose keywords</a>{% endif %}</dd>
+      <dt>Starts</dt><dd>{{ c.start_at|human if c.start_at else 'When you press Start' }}</dd>
+      <dt>Stops</dt><dd>{{ c.end_at|human if c.end_at else 'When you stop it' }}</dd>
+      <dt>Daily window</dt><dd>{{ c.window_start }}–{{ c.window_end }} · {% for d in c.days %}{{ ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][d|int] }}{{ ', ' if not loop.last }}{% endfor %}</dd>
+      <dt>Per person</dt><dd>Max {{ c.max_messages }} messages · at least {{ c.min_gap_days }} days apart</dd>
+      <dt>Pace</dt><dd>{{ c.per_hour }} per hour · max {{ c.daily_cap }} per day</dd>
+    </dl></div>
+</div>
+
+<div class="card flush"><div style="padding:1.1rem 1.2rem .3rem"><h2 style="margin:0">Activity</h2></div>
+{% if log %}<div class=table-wrap><table><thead><tr><th>When<th>Business<th>Phone<th>Variant<th>Status</tr></thead><tbody>
+{% for m in log %}<tr><td class=hint>{{ m.sent_at|human }}<td class=name>{{ m.name or '—' }}<td class=phone>+{{ m.phone }}
+  <td>V{{ vlabel.get(m.variant_id, '?') }}<td><span class="pill {{ {'sent':'ok','test':'info','failed':'bad'}.get(m.status, '') }}" title="{{ m.error }}">{{ {'test':'simulated'}.get(m.status, m.status) }}</span></tr>{% endfor %}
+</tbody></table></div>{% include "_pagebar.html" %}
+{% else %}<div class=empty><b>Nothing sent yet</b>Messages appear here as the campaign runs.</div>{% endif %}</div>
+{% endblock %}

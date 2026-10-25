@@ -21,6 +21,19 @@ CREATE TABLE IF NOT EXISTS places(
   status TEXT DEFAULT 'New', notes TEXT DEFAULT '', added_at TEXT);
 CREATE TABLE IF NOT EXISTS search_places(search_id INTEGER, place_id TEXT, is_new INTEGER DEFAULT 1, PRIMARY KEY(search_id, place_id));
 CREATE TABLE IF NOT EXISTS api_usage(day TEXT PRIMARY KEY, calls INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS campaigns(
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL, status TEXT DEFAULT 'draft',
+  idea TEXT DEFAULT '', link TEXT DEFAULT '', language TEXT DEFAULT 'English', ai_model TEXT DEFAULT '',
+  start_at TEXT, end_at TEXT, window_start TEXT DEFAULT '10:00', window_end TEXT DEFAULT '19:00', days TEXT DEFAULT '0,1,2,3,4,5',
+  per_hour INTEGER DEFAULT 30, daily_cap INTEGER DEFAULT 200, max_messages INTEGER DEFAULT 3, min_gap_days INTEGER DEFAULT 3,
+  statuses TEXT DEFAULT 'New', mobile_only INTEGER DEFAULT 1, mark_contacted INTEGER DEFAULT 1,
+  channel TEXT DEFAULT 'test', created_at TEXT, note TEXT DEFAULT '');
+CREATE TABLE IF NOT EXISTS campaign_keywords(campaign_id INTEGER, keyword TEXT, PRIMARY KEY(campaign_id, keyword));
+CREATE TABLE IF NOT EXISTS campaign_variants(id INTEGER PRIMARY KEY, campaign_id INTEGER, body TEXT, approved INTEGER DEFAULT 0, source TEXT DEFAULT 'manual', created_at TEXT);
+CREATE TABLE IF NOT EXISTS campaign_media(id INTEGER PRIMARY KEY, campaign_id INTEGER, kind TEXT, filename TEXT, original TEXT, size INTEGER);
+CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY, campaign_id INTEGER, place_id TEXT, phone TEXT, variant_id INTEGER,
+  body TEXT, status TEXT, error TEXT DEFAULT '', sent_at TEXT, UNIQUE(campaign_id, place_id));
+CREATE TABLE IF NOT EXISTS optouts(phone TEXT PRIMARY KEY, reason TEXT DEFAULT '', added_at TEXT);
 """
 
 
@@ -30,9 +43,10 @@ def _cols(c, table):
 
 @contextmanager
 def tx():
-    c = sqlite3.connect(DB)
+    c = sqlite3.connect(DB, timeout=15)
     c.row_factory = sqlite3.Row
     try:
+        c.execute("PRAGMA journal_mode=WAL")
         c.executescript(SCHEMA)
         # migrate databases created by earlier versions
         for col, ddl in (("status", "TEXT DEFAULT 'New'"), ("notes", "TEXT DEFAULT ''"), ("added_at", "TEXT")):
@@ -40,6 +54,9 @@ def tx():
                 c.execute(f"ALTER TABLE places ADD COLUMN {col} {ddl}")
         if "is_new" not in _cols(c, "search_places"):
             c.execute("ALTER TABLE search_places ADD COLUMN is_new INTEGER DEFAULT 1")
+        for col in ("max_messages", "min_gap_days"):  # per-person contact limits, added after the campaigns table first shipped
+            if col not in _cols(c, "campaigns"):
+                c.execute(f"ALTER TABLE campaigns ADD COLUMN {col} INTEGER DEFAULT 3")
         if "new_count" not in _cols(c, "searches"):
             c.execute("ALTER TABLE searches ADD COLUMN new_count INTEGER DEFAULT 0")
         yield c

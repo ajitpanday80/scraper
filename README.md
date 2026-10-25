@@ -24,4 +24,13 @@ Never commit keys or passwords. Use HTTPS in production (`COOKIE_SECURE=1`).
 Phone fields are billed at a higher Google tier; check current Google Maps Platform pricing.
 Contacting leads is subject to TRAI DND and data-protection rules.
 
+## Campaigns (test mode)
+Pick the keywords whose leads should be messaged, write your idea, let the AI (OpenRouter) draft variants, approve the ones you want, set when to start/stop, the daily window, days and pace, then start.
+- **Variants** are rotated least-used first; drafts are never sent until approved; every approved variant must contain an opt-out line (e.g. "Reply STOP to opt out.").
+- **Per-person limits** (set per campaign, default **max 3 messages, at least 3 days apart**) are counted on the phone number across *all* campaigns. Test-mode and failed sends don't count.
+- **Opt-out list**: numbers there are never messaged. Leads you mark "Not interested" are skipped unless you include that status.
+- **Pacing**: messages per hour, a daily cap, daily window (default 10:00-19:00, always within `SEND_WINDOW_LIMIT`) and days of the week. 5 failures in a row pause a campaign.
+- **Sending is simulated for now** (`senders.py`): nothing is sent to anyone. A real provider must be added there. On the official WhatsApp Business API and DLT-registered SMS in India, cold messages need pre-approved templates and recipient consent; check the current rules before enabling one.
+- The scheduler runs inside the app process; keep a single gunicorn worker. Set `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` (or pick a model per campaign).
+
 Tests: `pytest`

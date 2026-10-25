@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block title %}Campaigns · Lead Finder{% endblock %}{% block body %}
+<div class=top><div><h1>Campaigns</h1><p class=sub>Send timed messages to the leads from the keywords you choose.</p></div>
+  <a class="btn ghost sm" href="{{ url_for('camp.optouts') }}">Opt-out list</a></div>
+<div class="card"><form method=post action="{{ url_for('camp.new') }}" class=row>
+  <input type=hidden name=csrf value="{{ csrf }}">
+  <div class=grow style="flex:1"><input type=text name=name placeholder="New campaign name, e.g. Tiffin partners – October" maxlength=80 required></div>
+  <button class=btn>Create campaign</button></form></div>
+<div class="card flush">
+{% if rows %}<div class=table-wrap><table>
+<thead><tr><th>Campaign<th>Status<th>Keywords<th>Progress<th>Today<th>Schedule</tr></thead><tbody>
+{% for r in rows %}<tr>
+  <td><a class=name href="{{ url_for('camp.overview', cid=r.id) }}">{{ r.name }}</a>
+  <td><span class="pill {{ r.state[1] }}" title="{{ r.state[2] }}">{{ r.state[0] }}</span>
+  <td>{% if r.keywords %}<div class=tags>{% for k in r.keywords[:2] %}<span class=tag>{{ k }}</span>{% endfor %}{% if r.keywords|length > 2 %}<span class=tag title="{{ r.keywords[2:]|join(', ') }}">+{{ r.keywords|length - 2 }}</span>{% endif %}</div>{% else %}<span class=hint>None yet</span>{% endif %}
+  <td>{% set done = r.sent + r.test %}<b>{{ done }}</b> <span class=hint>sent{% if r.test %} (simulated){% endif %} · {{ r.audience }} waiting</span>
+  <td>{{ r.today }} <span class=hint>/ {{ r.daily_cap }}</span>
+  <td class=hint>{{ r.window_start }}–{{ r.window_end }}<br>{{ r.start_at|human if r.start_at else 'Starts when you start it' }}
+</tr>{% endfor %}</tbody></table></div>{% include "_pagebar.html" %}
+{% else %}<div class=empty><b>No campaigns yet</b>Create one above, pick keywords, write a message and start it.</div>{% endif %}
+</div>{% endblock %}

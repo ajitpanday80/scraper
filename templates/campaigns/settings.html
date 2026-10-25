@@ -1,0 +1,45 @@
+{% extends "base.html" %}{% block title %}Settings · {{ c.name }}{% endblock %}{% block body %}
+{% include "campaigns/_tabs.html" %}
+<form method=post>
+<input type=hidden name=csrf value="{{ csrf }}">
+
+<div class=card><h2>Basics</h2>
+  <div class=fields>
+    <label class=f><span>Campaign name</span><input type=text name=name value="{{ c.name }}" maxlength=80 required></label>
+    <label class=f><span>Message language</span><select name=language aria-label="Language">{% for l in languages %}<option {{ 'selected' if c.language==l }}>{{ l }}</option>{% endfor %}</select></label>
+    <label class="f wide"><span>Your idea (what should the message say?)</span><textarea name=idea rows=5 maxlength=2000 placeholder="e.g. We run a fresh tiffin kitchen in Sector 56. Offering a free trial week to PGs and offices. Contact us on WhatsApp for the menu.">{{ c.idea }}</textarea>
+      <small class=hint>The AI uses only what you write here. It will not invent prices or offers.</small></label>
+    <label class="f wide"><span>Link to include (optional)</span><input type=text name=link value="{{ c.link }}" placeholder="https://wa.me/91XXXXXXXXXX or your website" maxlength=500></label>
+    <label class="f wide"><span>AI model (optional)</span><input type=text name=ai_model value="{{ c.ai_model }}" placeholder="{{ env_model or 'e.g. provider/model-name from openrouter.ai/models' }}" maxlength=120>
+      <small class=hint>Leave blank to use the server default{% if env_model %} (<b>{{ env_model }}</b>){% else %} (none set yet, so type one here or set OPENROUTER_MODEL){% endif %}.</small></label>
+  </div></div>
+
+<div class=card><h2>Audience</h2>
+  <p class=hint style="margin-top:-.4rem">Leads found by the keywords you tick below will be messaged. <b>{{ audience }}</b> leads qualify right now with the saved settings.</p>
+  <div class=toolbar style="border:0;padding:0 0 .6rem"><div class=grow><svg class="ic sm"><use href="#i-search"/></svg><input type=search placeholder="Filter keywords" data-filter="#kwlist"></div></div>
+  <div class=kwlist id=kwlist>
+    {% for k in all_keywords %}<label class=chk><input type=checkbox name=kw value="{{ k.keyword }}" {{ 'checked' if k.keyword in c.keywords }}> <span>{{ k.keyword }}</span><em>{{ k.n }} leads</em></label>
+    {% else %}<p class=hint>No keywords yet. Run a search first.</p>{% endfor %}
+  </div>
+  <div class=fields style="margin-top:1rem">
+    <div class="f wide"><span>Include leads with status</span><div class=pills>{% for s in statuses %}<label class=chip-check><input type=checkbox name=statuses value="{{ s }}" {{ 'checked' if s in c.statuses }}><span>{{ s }}</span></label>{% endfor %}</div></div>
+    <label class=chk><input type=checkbox name=mobile_only value=1 {{ 'checked' if c.mobile_only }}> <span>Mobile numbers only</span></label>
+    <label class=chk><input type=checkbox name=mark_contacted value=1 {{ 'checked' if c.mark_contacted }}> <span>Mark leads as “Contacted” after a real send</span></label>
+    <label class=f><span>Maximum messages per person</span><input type=number name=max_messages value="{{ c.max_messages }}" min=1 max=10><small class=hint>Counted across all campaigns. Default 3.</small></label>
+    <label class=f><span>Minimum days between messages</span><input type=number name=min_gap_days value="{{ c.min_gap_days }}" min=1 max=365><small class=hint>To the same person, across all campaigns. Default 3.</small></label>
+  </div></div>
+
+<div class=card><h2>Schedule</h2>
+  <p class=hint style="margin-top:-.4rem">All times are {{ tz }}. Sending only happens inside the daily window, on the days you pick.</p>
+  <div class=fields>
+    <label class=f><span>Start</span><input type=datetime-local name=start_at value="{{ c.start_at|local_input }}"><small class=hint>Blank = as soon as you press Start.</small></label>
+    <label class=f><span>Stop (optional)</span><input type=datetime-local name=end_at value="{{ c.end_at|local_input }}"><small class=hint>Blank = until you stop it.</small></label>
+    <label class=f><span>Daily window opens</span><input type=time name=window_start value="{{ c.window_start }}" min="{{ limit[0] }}" max="{{ limit[1] }}"></label>
+    <label class=f><span>Daily window closes</span><input type=time name=window_end value="{{ c.window_end }}" min="{{ limit[0] }}" max="{{ limit[1] }}"><small class=hint>Allowed range: {{ limit[0] }}–{{ limit[1] }}.</small></label>
+    <div class="f wide"><span>Days</span><div class=pills>{% for d in days %}<label class=chip-check><input type=checkbox name=days value="{{ loop.index0 }}" {{ 'checked' if loop.index0|string in c.days }}><span>{{ d }}</span></label>{% endfor %}</div></div>
+    <label class=f><span>Messages per hour</span><input type=number name=per_hour value="{{ c.per_hour }}" min=1 max="{{ max_per_hour }}"><small class=hint>Spread evenly, e.g. 30 means one about every 2 minutes.</small></label>
+    <label class=f><span>Daily limit</span><input type=number name=daily_cap value="{{ c.daily_cap }}" min=1 max=2000></label>
+  </div></div>
+
+<div class=row><button class=btn>Save settings</button><a class="btn ghost" href="{{ url_for('camp.overview', cid=c.id) }}">Cancel</a></div>
+</form>{% endblock %}

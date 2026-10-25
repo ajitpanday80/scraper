@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% block title %}Opt-outs · Lead Finder{% endblock %}{% block body %}
+<p class=hint style="margin:0 0 .6rem"><a href="{{ url_for('camp.index') }}">← All campaigns</a></p>
+<div class=top><div><h1>Opt-out list</h1><p class=sub>Numbers here are never messaged by any campaign. Add anyone who asks you to stop.</p></div></div>
+<div class=card><form method=post action="{{ url_for('camp.optouts_add') }}">
+  <input type=hidden name=csrf value="{{ csrf }}">
+  <textarea name=numbers rows=3 placeholder="One number per line or separated by commas, e.g. 98765 43210, +91 99999 11111" required></textarea>
+  <div class=row style="margin-top:.7rem"><input type=text name=reason placeholder="Reason (optional), e.g. replied STOP" maxlength=100 style="max-width:320px"><button class=btn>Add to opt-out list</button></div>
+</form></div>
+<div class="card flush">
+  <form method=get class=toolbar><div class=grow><svg class="ic sm"><use href="#i-search"/></svg><input type=search name=q value="{{ q }}" placeholder="Find a number"></div><button class="btn sm">Search</button></form>
+  {% if rows %}<div class=table-wrap><table><thead><tr><th>Number<th>Reason<th>Added<th></tr></thead><tbody>
+  {% for r in rows %}<tr><td class=phone>+{{ r.phone }}<td class=hint>{{ r.reason }}<td class=hint>{{ r.added_at|human }}
+    <td><form method=post action="{{ url_for('camp.optouts_remove') }}" class=delform><input type=hidden name=csrf value="{{ csrf }}"><input type=hidden name=phone value="{{ r.phone }}"><input type=hidden name=back value="{{ request.full_path|trim('?') }}">
+      <button type=button class=icon-btn data-reveal aria-label="Remove"><svg class="ic sm"><use href="#i-trash"/></svg></button>
+      <span class=confirm hidden><span class=hint>Allow messages again?</span><button class="btn danger sm">Yes, remove</button><button type=button class="btn ghost sm" data-cancel>Cancel</button></span></form></tr>{% endfor %}
+  </tbody></table></div>{% include "_pagebar.html" %}
+  {% else %}<div class=empty><b>No numbers on the list</b>{% if q %}No match for that search.{% else %}Numbers you add will be skipped by every campaign.{% endif %}</div>{% endif %}
+</div>{% endblock %}

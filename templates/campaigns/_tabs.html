@@ -1,0 +1,11 @@
+<p class=hint style="margin:0 0 .6rem"><a href="{{ url_for('camp.index') }}">← All campaigns</a></p>
+<div class=top>
+  <div><h1>{{ c.name }}</h1>
+    <div class=chips><span class="pill {{ state[1] if state is defined else '' }}">{{ state[0] if state is defined else c.status|capitalize }}</span>
+      <span class=pill title="Where messages go">{{ 'Test mode · nothing is actually sent' if c.channel == 'test' else c.channel }}</span></div></div>
+  <div class=seg>
+    <a class="{{ 'on' if tab=='overview' }}" href="{{ url_for('camp.overview', cid=c.id) }}">Overview</a>
+    <a class="{{ 'on' if tab=='settings' }}" href="{{ url_for('camp.settings', cid=c.id) }}">Settings</a>
+    <a class="{{ 'on' if tab=='messages' }}" href="{{ url_for('camp.messages', cid=c.id) }}">Messages</a>
+  </div>
+</div>
