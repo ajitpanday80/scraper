@@ -209,7 +209,7 @@ a.pg:hover{background:var(--soft);text-decoration:none}
 .f{display:grid;gap:.35rem}.f>span,.f.wide>span,.fields>.f>span{font-weight:650;font-size:.86rem}.f.wide{grid-column:1/-1}
 .f input,.f textarea,textarea,input[type=file]{width:100%}
 textarea{resize:vertical;line-height:1.5}
-input[type=number],input[type=time],input[type=datetime-local]{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:11px;padding:.55rem .75rem;width:100%}
+input[type=number],input[type=time],input[type=datetime-local],input[type=tel]{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:11px;padding:.55rem .75rem;width:100%}
 input[type=file]{font:inherit;color:var(--muted);max-width:420px}
 .chk{display:flex;gap:.6rem;align-items:center;cursor:pointer;line-height:1.35}.chk input{width:17px;height:17px;accent-color:var(--brand);flex:none}
 .chk em{margin-left:auto;font-style:normal;color:var(--muted);font-size:.8rem;white-space:nowrap}
@@ -241,3 +241,24 @@ code{background:var(--soft);padding:.05rem .35rem;border-radius:6px;font-size:.8
 .chip-check{position:relative;display:inline-block}
 .chip-check input{width:1px!important;height:1px!important;left:0;top:0;margin:0}
 .row>.grow input[type=text],.row>.grow input:not([type]){width:100%}
+
+/* in-page time / date-time pickers and suggestions (replace the browser's native popups) */
+.timepick{display:flex;align-items:center;gap:.4rem}.timepick .dd{min-width:80px}.tsep{font-weight:700;color:var(--muted)}
+.dtpick{position:relative}.dtpick>.dd-btn{width:100%;box-sizing:border-box}.dtpick.has>.dd-btn{padding-right:5rem}
+.dtpick .dd-btn .ic{color:var(--muted);flex:none}.dd-label.dim{color:var(--muted);font-weight:500}
+.dt-clear{position:absolute;right:2.4rem;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--muted);font:inherit;font-size:.82rem;font-weight:600;cursor:pointer;padding:.2rem .3rem;border-radius:6px}.dt-clear:hover{color:var(--bad)}.dt-clear[hidden]{display:none}
+.cal{position:absolute;z-index:50;top:calc(100% + 6px);left:0;width:300px;max-width:calc(100vw - 24px);background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 18px 40px -12px rgba(15,23,42,.3);padding:.8rem;animation:ddin .12s ease-out}
+.cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem}.cal-head b{font-size:.95rem}
+.cal-nav{display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:9px;background:none;color:var(--ink);cursor:pointer}.cal-nav:hover{background:var(--soft)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+.cal-grid i{font-style:normal;font-size:.72rem;font-weight:700;color:var(--muted);padding:.3rem 0}
+.cal-day{height:36px;border:0;border-radius:10px;background:none;color:var(--ink);font:inherit;font-size:.88rem;cursor:pointer}
+.cal-day:hover{background:var(--soft)}.cal-day.today{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--brand) 55%,transparent)}
+.cal-day.sel{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;font-weight:700;box-shadow:0 6px 14px -6px rgba(91,91,240,.8)}
+.cal-foot{display:flex;align-items:center;gap:.4rem;margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--line)}.cal-foot .hint{margin-right:.2rem}
+.cal-foot .dd{min-width:72px}.cal-foot .btn{margin-left:auto}
+.f{grid-template-columns:minmax(0,1fr)}.dtpick{min-width:0;max-width:100%}
+.dtpick.has .dd-chev{display:none}.dtpick.has>.dd-btn{padding-right:3.6rem}.dtpick .dt-clear{right:.8rem}
+.badge{margin-left:auto;background:var(--brand);color:#fff;border-radius:999px;font-size:.7rem;font-weight:700;padding:.05rem .45rem;min-width:1.3rem;text-align:center}
+tr.unread{background:color-mix(in srgb,var(--brand) 6%,transparent)}
+.newcamp{display:flex;gap:.7rem;align-items:center;flex-wrap:wrap}.newcamp input[type=text]{width:100%}.newcamp .dd{flex:none;min-width:200px}

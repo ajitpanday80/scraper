@@ -5,12 +5,14 @@
     <div><div class=name>{{ r.name }}</div>
     {% if r.rating %}<div class=sub-rate><span class=rate><svg class=ic><use href="#i-star"/></svg>{{ r.rating }}</span> <span class=hint>({{ r.rating_count or 0 }} reviews)</span></div>{% endif %}
     {% if r.tags %}<div class=tags>{% for k in r.tags[:2] %}<a class=tag href="{{ url_for('leads', kw=k) }}" title="Show all leads found by this keyword">{{ k }}</a>{% endfor %}{% if r.tags|length > 2 %}<span class=tag title="{{ r.tags[2:]|join(', ') }}">+{{ r.tags|length - 2 }}</span>{% endif %}</div>{% endif %}
+    {% if r.tiffin_at %}<div><span class="pill info" title="Pushed to MyTiffin">In MyTiffin</span></div>{% endif %}
+    {% if r.replied %}<div><a class="pill ok" href="{{ url_for('wa.replies') }}" title="This lead has replied on WhatsApp">Replied</a></div>{% endif %}
     {% if r.maps_url %}<div class=acts><a class=act href="{{ r.maps_url }}" target=_blank rel=noopener><svg class="ic sm"><use href="#i-pin"/></svg>Map</a></div>{% endif %}</div></div>
-  <td data-label=Phone>{% if r.phone %}<div class=phone>{{ r.phone }}</div>
+  <td data-label=Phone>{% if r.phone %}<div class=phone>{{ r|show_phone }}</div>
     <div class=acts>
-      <a class="act call" href="tel:{{ r.intl_phone|tel or r.phone|tel }}"><svg class="ic sm"><use href="#i-phone"/></svg>Call</a>
-      {% if r.intl_phone|wa %}<a class="act wa" href="https://wa.me/{{ r.intl_phone|wa }}" target=_blank rel=noopener><svg class="ic sm"><use href="#i-chat"/></svg>WhatsApp</a>{% endif %}
-      <button type=button class=act data-copy="{{ r.intl_phone or r.phone }}"><svg class="ic sm"><use href="#i-copy"/></svg>Copy</button>
+      <a class="act call" href="tel:{{ r|dial }}"><svg class="ic sm"><use href="#i-phone"/></svg>Call</a>
+      {% set wad = (r|dial)|wa %}{% if wad %}<a class="act wa" href="https://wa.me/{{ wad }}" target=_blank rel=noopener><svg class="ic sm"><use href="#i-chat"/></svg>WhatsApp</a>{% endif %}
+      <button type=button class=act data-copy="{{ r|dial }}"><svg class="ic sm"><use href="#i-copy"/></svg>Copy</button>
     </div>{% else %}<span class=hint>No number listed</span>{% endif %}
   <td data-label=Address class=addr>{{ r.address }}
   <td data-label=Status><select class=st data-pid="{{ r.place_id }}" data-s="{{ r.status }}" aria-label="Status">{% for s in statuses %}<option {{ 'selected' if r.status==s }}>{{ s }}</option>{% endfor %}</select>

@@ -1,0 +1,14 @@
+[Unit]
+Description=Lead Finder (Flask app)
+After=network.target wa-bridge.service
+
+[Service]
+WorkingDirectory=/root/scarper
+EnvironmentFile=/etc/places/env
+# keep a single worker: search progress, login lockout and the campaign scheduler live in this process
+ExecStart=/root/scarper/venv/bin/gunicorn --workers 1 --threads 4 --bind 0.0.0.0:6761 app:app
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target

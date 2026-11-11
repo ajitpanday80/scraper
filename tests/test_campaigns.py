@@ -250,7 +250,7 @@ def flashes(resp):
 
 def test_campaign_web_flow(web, monkeypatch):
     assert web.get("/campaigns/").status_code == 200
-    r = web.post_("/campaigns/new", name="October push")
+    r = web.post_("/campaigns/new", country="IN", name="October push")
     assert r.status_code == 302 and r.headers["Location"].endswith("/campaigns/1/settings")
     page = web.get("/campaigns/1/settings").get_data(as_text=True)
     assert "tiffin gurgaon" in page and "Asia/Kolkata" in page
@@ -262,6 +262,14 @@ def test_campaign_web_flow(web, monkeypatch):
                   mobile_only="1", kw=["tiffin gurgaon", "not a real keyword"])
     c = camp.get(1)
     assert "Settings saved" in flashes(r) and c["keywords"] == ["tiffin gurgaon"] and c["days"] == ["0", "1"] and c["daily_cap"] == 50
+    assert "messages can go out a day" not in flashes(r)                                          # 30/h over 9h fits 50
+    r = web.post_("/campaigns/1/settings", follow=True, name="October push", idea="Fresh tiffins", link="https://x.co/a", language="English",
+                  window_start="10:00", window_end="12:00", days=["0", "1"], statuses=["New"], per_hour="10", daily_cap="50", max_messages="3", min_gap_days="3",
+                  mobile_only="1", kw=["tiffin gurgaon"])
+    assert "only about 20 messages can go out a day, not 50" in flashes(r) and camp.get(1)["daily_cap"] == 50  # saved, but warned
+    web.post_("/campaigns/1/settings", name="October push", idea="Fresh tiffins", link="https://x.co/a", language="English",
+              window_start="10:00", window_end="19:00", days=["0", "1"], statuses=["New"], per_hour="30", daily_cap="50", max_messages="3", min_gap_days="3",
+              mobile_only="1", kw=["tiffin gurgaon"])
 
     # cannot start yet
     r = web.post_("/campaigns/1/start", follow=True, ack="1")
@@ -289,7 +297,7 @@ def test_campaign_web_flow(web, monkeypatch):
 
 
 def test_ai_generate_route_and_errors(web, monkeypatch):
-    web.post_("/campaigns/new", name="AI one")
+    web.post_("/campaigns/new", country="IN", name="AI one")
     r = web.post_("/campaigns/1/messages/generate", n="3", follow=True)
     assert "OPENROUTER_API_KEY" in flashes(r) or "Write the basic idea" in flashes(r)
     monkeypatch.setattr(ai, "generate_variants", lambda idea, link, lang, n, model=None: [f"Hi {{name}} v{i} Reply STOP to opt out." for i in range(n)])
@@ -299,7 +307,7 @@ def test_ai_generate_route_and_errors(web, monkeypatch):
 
 
 def test_media_upload_rules(web):
-    web.post_("/campaigns/new", name="Media")
+    web.post_("/campaigns/new", country="IN", name="Media")
     png = b"\x89PNG\r\n\x1a\n" + b"0" * 50
     r = web.post_("/campaigns/1/media", file=(io.BytesIO(png), "Offer Banner.png"), follow=True)
     m = camp.media(1)
@@ -389,3 +397,199 @@ def test_sender_is_never_called_without_a_valid_number(env, monkeypatch):
     assert scheduler.process(C(env), MON_11AM, Spy()) == "no_phone"
     assert called == [] and camp.log(env, 1, 5)[0][0]["error"] == "no valid phone number"
     assert camp.valid_phone("919876543210") and not camp.valid_phone("91987") and not camp.valid_phone("91 98765 43210")
+
+
+def test_manual_lead_is_picked_up_by_a_running_campaign(env):
+    pid, err = db.add_manual("Sharma Tiffin", "98765 43210", "Sector 4", "met at expo", "tiffin gurgaon")
+    assert pid and not err
+    row = db.query_places(text="Sharma")[0][0]
+    assert row["intl_phone"] == "+91 98765 43210" and "tiffin gurgaon" in row["tags"] and row["notes"] == "met at expo"
+    assert db.add_manual("Other", "+91 9876543210")[0] is None                          # same number, different format
+    assert db.add_manual("", "9876543211")[1] and db.add_manual("X", "123")[1]          # name and phone required
+    before = camp.audience_count(camp.get(env))
+    pid2, _ = db.add_manual("New Keyword Co", "9811122233", keyword="catering delhi")
+    assert camp.audience_count(camp.get(env)) == before                                 # different keyword: not targeted yet
+    assert camp.add_keywords(env, ["catering delhi"]) == 1 and camp.add_keywords(env, ["catering delhi"]) == 0
+    assert camp.audience_count(camp.get(env)) == before + 1                             # running campaign gains the lead
+
+
+def test_add_lead_and_keyword_routes(web):
+    r = web.post_("/leads/add", follow=True, name="Hand Added", phone="9822233344", keyword="my list")
+    assert "Added Hand Added" in flashes(r) and any(x["name"] == "Hand Added" for x in db.query_places()[0])
+    assert "already in your leads" in flashes(web.post_("/leads/add", follow=True, name="Dup", phone="+91 98222 33344"))
+    assert b"Add a lead manually" in web.get("/leads").data
+    cid = camp.create("C")
+    r = web.post_(f"/campaigns/{cid}/keywords", follow=True, kw=["my list", "not a keyword"])
+    assert "Added 1 keyword" in flashes(r) and camp.get(cid)["keywords"] == ["my list"]
+    assert "Tick at least one" in flashes(web.post_(f"/campaigns/{cid}/keywords", follow=True, kw=["my list"]))
+    assert b"Add more keywords" in web.get(f"/campaigns/{cid}").data
+
+
+@pytest.mark.parametrize("raw,digits", [
+    ("98765 43210", "919876543210"),            # no country code
+    ("9876543210", "919876543210"),
+    ("098765 43210", "919876543210"),           # national trunk 0
+    ("+91 98765-43210", "919876543210"),
+    ("+91-(98765) 43210", "919876543210"),
+    ("(+91) 98765.43210", "919876543210"),
+    ("0091 98765 43210", "919876543210"),       # 00 international prefix
+    ("+91 (0) 98765 43210", "919876543210"),    # trunk zero in brackets
+    ("91 98765 43210", "919876543210"),
+    ("  98765 43210 x12  ", "919876543210"),    # extension dropped
+    ("98765 43210 / 98765 43211", "919876543210"),  # several numbers: first wins
+    ("98765 43210, 011 2345 6789", "919876543210"),
+    ("98765 43210 or 98765 43211", "919876543210"),
+    ("011-2345 6789", "911123456789"),          # landline with STD code
+    ("+44 20 7946 0958", "442079460958"),       # explicit foreign number is kept
+    ("tel: 98765 43210", ""),                   # letters: refuse to guess
+    ("98765", ""), ("", ""), ("12345678901234567", ""), ("+91 98765 4321", ""),   # wrong length
+])
+def test_phone_cleaning(raw, digits):
+    assert db.clean_phone(raw) == digits
+
+
+def test_phone_display_and_optout_use_the_same_rules():
+    assert db.format_phone("919876543210") == "+91 98765 43210"
+    assert db.format_phone("911123456789") == "+91 1123456789" and db.format_phone("442079460958") == "+442079460958"
+    assert camp.normalize_phone("098765-43210") == "919876543210"
+
+
+def test_phone_display_is_clean_and_whatsapp_works_for_any_country():
+    show, wa, dial = appmod.show_phone, appmod.wa_number, appmod.dial_number
+    us = {"phone": "(936) 508-2479", "intl_phone": "+1 936-508-2479"}
+    assert show(us) == "+1 936 508 2479" and dial(us) == "+19365082479" and wa(dial(us)) == "19365082479"
+    india = {"phone": "098765 43210", "intl_phone": "+91 98765 43210"}
+    assert show(india) == "+91 98765 43210" and dial(india) == "+919876543210" and wa(dial(india)) == "919876543210"
+    assert wa("+91 11 2345 6789") == ""                                             # Indian landline: no WhatsApp link
+    nointl = {"phone": "(832) 304-1850", "intl_phone": ""}                          # no international form stored: 10 digits read as Indian
+    assert show({"phone": "098765-43210", "intl_phone": ""}) == "+91 98765 43210"
+    assert dial({"phone": "", "intl_phone": ""}) == "" and show(nointl).startswith("+")
+
+
+def test_mobile_only_skips_indian_landlines_but_keeps_foreign_numbers(env):
+    db.save("tiffin gurgaon", [{**lead(30), "intl_phone": "+1 936-508-2479"}, {**lead(31), "intl_phone": "+91 80 1234 5678"},
+                               {**lead(32), "intl_phone": "+44 20 7946 0958"}])
+    names = {r["name"] for r in db.query_places(mobile=True, per_page=None)[0]}
+    assert {"Biz 30", "Biz 32", "Biz 1"} <= names and "Biz 31" not in names
+    c = camp.get(env)
+    assert c["mobile_only"] == 1
+    before = camp.audience_count(c)
+    c["mobile_only"] = 0
+    assert camp.audience_count(c) == before + 1                        # only the Indian landline differs
+
+
+def test_country_detection():
+    assert db.country_of("+91 98765 43210") == "IN" and db.country_of("+1 936-508-2479", "Spring, TX 77380, USA") == "US"
+    assert db.country_of("+1 416 555 0100", "Toronto, ON, Canada") == "CA" and db.country_of("+44 20 7946 0958") == "GB"
+    assert db.country_of("+971 4 123 4567") == "AE" and db.country_of("+998 71 123 4567") == "XX" and db.country_of("") == ""
+
+
+def test_country_tagging_filters_and_campaign_audience(env):
+    db.save("it services texas", [{**lead(50), "intl_phone": "+1 936-508-2479", "address": "Spring, TX, USA"},
+                                  {**lead(51), "intl_phone": "+1 832-304-1850", "address": "Houston, TX, USA"},
+                                  {**lead(52), "intl_phone": "", "phone": ""}])
+    by = {c["code"]: c["n"] for c in db.countries()}
+    assert by["US"] == 2 and by["IN"] == 8 and by["NONE"] == 1
+    assert {r["name"] for r in db.query_places(country="US")[0]} == {"Biz 50", "Biz 51"}
+    assert [r["name"] for r in db.query_places(country="NONE")[0]] == ["Biz 52"]
+    assert [k["keyword"] for k in db.keywords("US")] == ["it services texas"]                 # only keywords with US leads
+    assert {k["keyword"] for k in db.keywords("IN")} == {"tiffin gurgaon"} and len(db.keywords()) == 2
+    live = db.count_countries([{"intl_phone": "+1 936-508-2479", "address": "TX, USA"}, {"intl_phone": "+91 98765 43210"}, {"intl_phone": ""}])
+    assert {c["code"] for c in live} == {"US", "IN", "NONE"}
+    with db.tx() as t:
+        t.execute("UPDATE campaigns SET country='US' WHERE id=?", (env,))
+        t.execute("INSERT OR IGNORE INTO campaign_keywords VALUES (?, 'it services texas')", (env,))
+    c = camp.get(env)
+    assert camp.audience_count(c) == 2                                                          # IN leads of 'tiffin gurgaon' are excluded
+    c["country"] = "IN"
+    assert camp.audience_count(c) == 8
+    c["country"] = "ANY"
+    assert camp.audience_count(c) == 10
+
+
+def test_campaign_time_zone_follows_the_country(env):
+    with db.tx() as t:
+        t.execute("UPDATE campaigns SET country='US', tz='' WHERE id=?", (env,))
+    us = camp.get(env)
+    assert us["tzname"] == "America/Chicago"
+    assert scheduler.check(us, MON_11AM) == "window"          # 11:00 IST is 00:30 in Texas: closed, though the same instant is 'open' in India
+    open_in_texas = datetime.datetime(2026, 10, 26, 16, 30)   # 11:30 Central
+    assert scheduler.check(us, open_in_texas) == "open"
+    with db.tx() as t:
+        t.execute("UPDATE campaigns SET tz='Asia/Kolkata' WHERE id=?", (env,))
+    assert scheduler.check(camp.get(env), MON_11AM) == "open"                                   # explicit zone wins over the country's
+    assert camp.input_to_utc("2026-10-26T10:00", camp.zone("America/Chicago")) == datetime.datetime(2026, 10, 26, 15, 0)
+
+
+def test_campaign_requires_a_country_and_pages_render(web):
+    assert "Choose which country" in flashes(web.post_("/campaigns/new", follow=True, name="No country"))
+    r = web.post_("/campaigns/new", follow=True, name="US push", country="US")
+    assert b"Who you are messaging" in r.data and b"America/Chicago" in r.data
+    assert b"United States" in web.get("/campaigns/").data
+    assert b"All countries" in web.get("/leads").data and b"India" in web.get("/leads?country=IN").data
+
+
+@pytest.mark.parametrize("addr,expect", [
+    ("Shop 4, Sector 56, Gurugram, Haryana 122011, India", ("Sector 56", "Gurugram", "122011")),
+    ("Baner Rd, Baner, Pune, Maharashtra 411045, India", ("Baner", "Pune", "411045")),
+    ("Sector 56, Gurugram, Haryana, 122011, India", ("Sector 56", "Gurugram", "122011")),
+    ("Pune, Maharashtra, India", ("", "Pune", "")),
+    ("", ("", "", "")),
+])
+def test_tiffin_address_split(addr, expect):
+    import tiffin
+    assert tiffin.split_address(addr) == expect
+
+
+def test_tiffin_push_end_to_end_with_a_fake_server(web, monkeypatch):
+    import tiffin
+    db.save("tiffin gurgaon", [{**lead(60), "address": "Sector 56, Gurugram, Haryana 122011, India"},
+                               {**lead(61), "intl_phone": "+1 936-508-2479"},            # foreign: never sent
+                               {**lead(62), "intl_phone": "+91 11 2345 6789"}])           # landline: never sent
+    camp.add_optouts("90003 00003")                                                        # lead 3 opted out
+    monkeypatch.setenv("MYTIFFIN_API_KEY", "mtk_test_key_000000000000")
+    calls = []
+
+    class Resp:
+        status_code = 200
+        def __init__(self, body): self.body = body
+        def json(self): return self.body
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        calls.append((url, json, headers))
+        ks = json["kitchens"]
+        return Resp({"added": len(ks) - 1, "skipped": [f"Row 2 ({ks[0]['name']}): already in the directory"],
+                     "kitchens": [{"id": f"t{i}", "phone": k["phone"], "invite": f"https://mytiffin.online/signup?invite=x{i}"} for i, k in enumerate(ks)]})
+    monkeypatch.setattr(tiffin.requests, "post", fake_post)
+
+    page = web.get("/mytiffin/").data
+    assert b"tiffin gurgaon" in page
+    pend = tiffin.pending(["tiffin gurgaon"])
+    assert all(p["place_id"] != "p3" for p in pend) and not any(p["place_id"] in ("p61", "p62") for p in pend) and len(pend) == 5
+    assert b"will be sent" in web.post_("/mytiffin/preview", kw=["tiffin gurgaon"], free_days="30", list_on_join="1").data
+    r = web.post_("/mytiffin/send", kw=["tiffin gurgaon"], free_days="45", list_on_join="1")
+    assert b"Sent" in r.data and len(calls) == 1 and calls[0][0].endswith("/api/v1/kitchens")
+    body = calls[0][1]
+    assert body["listOnJoin"] is True and body["freeDays"] == 45 and len(body["kitchens"]) == len(pend)
+    assert calls[0][2]["Authorization"] == "Bearer mtk_test_key_000000000000"
+    assert {"name", "phone", "address", "area", "city", "pincode"} == set(body["kitchens"][0])
+    assert any(k["address"] == "Sector 56, Gurugram, Haryana 122011, India" for k in body["kitchens"])
+    assert any(k["city"] == "Gurugram" and k["pincode"] == "122011" for k in body["kitchens"])
+    assert tiffin.pending(["tiffin gurgaon"]) == []                                       # second push has nothing left: no duplicates
+    row = db.query_places(text="Biz 60")[0][0]
+    assert row["tiffin_at"] and row["tiffin_invite"].startswith("https://mytiffin.online/signup?invite=")
+    assert tiffin.history()[0]["added"] == len(pend) - 1
+
+
+def test_tiffin_api_errors_mark_nothing(web, monkeypatch):
+    import tiffin
+    monkeypatch.setenv("MYTIFFIN_API_KEY", "mtk_test_key_000000000000")
+
+    class Bad:
+        status_code = 401
+        def json(self): return {"error": "Missing or wrong API key."}
+    monkeypatch.setattr(tiffin.requests, "post", lambda *a, **k: Bad())
+    res = tiffin.push(["tiffin gurgaon"], True, 30)
+    assert "rejected the API key" in res["error"] and res["linked"] == 0 and len(tiffin.pending(["tiffin gurgaon"])) == 5
+    monkeypatch.delenv("MYTIFFIN_API_KEY")
+    assert b"not set" in web.get("/mytiffin/").data

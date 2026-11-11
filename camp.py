@@ -1,15 +1,19 @@
 """Campaign data layer: settings, audience selection, variants, media, message log, opt-outs."""
 import datetime
 import os
+import random
 import re
 from zoneinfo import ZoneInfo
 
 import db
+import senders
 
 TZ = ZoneInfo(os.environ.get("TIMEZONE", "Asia/Kolkata"))
 LIMIT = tuple(os.environ.get("SEND_WINDOW_LIMIT", "09:00-21:00").split("-"))  # earliest start / latest end of any daily window
 MAX_PER_HOUR = int(os.environ.get("MAX_PER_HOUR", 120))
 MAX_DAILY = 2000
+# WhatsApp (one linked number): wait a random 3-4 minutes between messages, across ALL whatsapp campaigns.
+WA_GAP = (int(os.environ.get("WA_GAP_MIN", 180)), int(os.environ.get("WA_GAP_MAX", 240)))
 DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 LANGUAGES = ["English", "Hinglish", "Hindi"]
 FMT = "%Y-%m-%d %H:%M:%S"
@@ -31,36 +35,70 @@ def fmt(dt):
     return dt.strftime(FMT) if dt else None
 
 
-def to_local(dt):
-    return dt.replace(tzinfo=datetime.timezone.utc).astimezone(TZ)
+TIMEZONES = {"Asia/Kolkata": "India (IST)", "America/New_York": "US Eastern", "America/Chicago": "US Central", "America/Denver": "US Mountain",
+             "America/Los_Angeles": "US Pacific", "America/Toronto": "Canada Eastern", "Europe/London": "UK", "Europe/Berlin": "Central Europe",
+             "Asia/Dubai": "UAE", "Asia/Singapore": "Singapore", "Australia/Sydney": "Australia (Sydney)"}
 
 
-def input_to_utc(s):
+def zone(name):
+    """ZoneInfo for a name (or the object itself); None if blank or unknown."""
+    if isinstance(name, ZoneInfo):
+        return name
+    try:
+        return ZoneInfo(name) if name else None
+    except (KeyError, ValueError, OSError):
+        return None
+
+
+def tz_of(c):
+    """Time zone a campaign's window, start and stop are read in: its own choice, else its country's, else the server's."""
+    return zone(c.get("tz")) or zone(db.COUNTRIES.get(c.get("country"), ("", "", ""))[2]) or TZ
+
+
+def to_local(dt, tz=None):
+    return dt.replace(tzinfo=datetime.timezone.utc).astimezone(zone(tz) or TZ)
+
+
+def input_to_utc(s, tz=None):
     """'2026-10-25T14:30' typed in local time -> naive UTC (None if blank/invalid)."""
     try:
         local = datetime.datetime.strptime(s.strip(), "%Y-%m-%dT%H:%M")
     except (ValueError, AttributeError):
         return None
-    return local.replace(tzinfo=TZ).astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    return local.replace(tzinfo=zone(tz) or TZ).astimezone(datetime.timezone.utc).replace(tzinfo=None)
 
 
-def utc_to_input(s):
-    return to_local(parse(s)).strftime("%Y-%m-%dT%H:%M") if s else ""
+def utc_to_input(s, tz=None):
+    return to_local(parse(s), tz).strftime("%Y-%m-%dT%H:%M") if s else ""
 
 
-def human(s):
-    return to_local(parse(s)).strftime("%a %d %b, %H:%M") if s else "—"
+def human(s, tz=None):
+    return to_local(parse(s), tz).strftime("%a %d %b, %H:%M") if s else "—"
 
 
-def local_day_start_utc(now):
-    local = to_local(now)
+def local_day_start_utc(now, tz=None):
+    local = to_local(now, tz)
     mid = local.replace(hour=0, minute=0, second=0, microsecond=0)
     return mid.astimezone(datetime.timezone.utc).replace(tzinfo=None)
 
 
+def gap_seconds(c, last_id=0):
+    """Wait before the next message. WhatsApp gets a random gap that stays fixed until the next message goes out."""
+    if c.get("channel") == "whatsapp":
+        return random.Random(f"{c['id']}:{last_id}").uniform(*WA_GAP)
+    return 3600 / c["per_hour"]
+
+
+def day_capacity(c):
+    """Most messages the daily window and pace allow in one day."""
+    mins = lambda s: int(s[:2]) * 60 + int(s[3:])
+    per_hour = 3600 / (sum(WA_GAP) / 2) if c.get("channel") == "whatsapp" else c["per_hour"]
+    return int(max(mins(c["window_end"]) - mins(c["window_start"]), 0) * per_hour // 60)
+
+
 def next_open(c, now):
     """Local datetime string for when the sending window next opens."""
-    local = to_local(now)
+    local = to_local(now, tz_of(c))
     for d in range(8):
         day = local + datetime.timedelta(days=d)
         if str(day.weekday()) in c["days"]:
@@ -79,9 +117,9 @@ def _row(r):
     return c
 
 
-def create(name):
+def create(name, country=db.ANY_COUNTRY):
     with db.tx() as c:
-        cid = c.execute("INSERT INTO campaigns(name, created_at) VALUES (?,?)", (name, fmt(utcnow()))).lastrowid
+        cid = c.execute("INSERT INTO campaigns(name, created_at, country) VALUES (?,?,?)", (name, fmt(utcnow()), country)).lastrowid
     return cid
 
 
@@ -92,6 +130,7 @@ def get(cid):
             return None
         camp = _row(r)
         camp["keywords"] = [k[0] for k in c.execute("SELECT keyword FROM campaign_keywords WHERE campaign_id=? ORDER BY keyword", (cid,))]
+    camp["tzname"] = str(tz_of(camp))
     return camp
 
 
@@ -114,7 +153,7 @@ def count():
 
 
 SETTING_COLS = ["name", "idea", "link", "language", "ai_model", "start_at", "end_at", "window_start", "window_end", "days",
-                "per_hour", "daily_cap", "max_messages", "min_gap_days", "statuses", "mobile_only", "mark_contacted"]
+                "per_hour", "daily_cap", "max_messages", "min_gap_days", "statuses", "mobile_only", "mark_contacted", "channel", "country", "tz"]
 
 
 def update(cid, clean, keywords):
@@ -123,6 +162,13 @@ def update(cid, clean, keywords):
                   [clean[k] for k in SETTING_COLS] + [cid])
         c.execute("DELETE FROM campaign_keywords WHERE campaign_id=?", (cid,))
         c.executemany("INSERT INTO campaign_keywords VALUES (?,?)", [(cid, k) for k in keywords])
+
+
+def add_keywords(cid, keywords):
+    """Add keywords to a campaign without touching its other settings (safe while it is running)."""
+    with db.tx() as c:
+        n = c.executemany("INSERT OR IGNORE INTO campaign_keywords VALUES (?,?)", [(cid, k) for k in keywords]).rowcount
+    return n
 
 
 def set_status(cid, status, note=""):
@@ -162,7 +208,10 @@ def validate(form, known_keywords):
     d["ai_model"] = form.get("ai_model", "").strip()[:120]
     if d["ai_model"] and not re.match(r"^[\w.\-:/]+$", d["ai_model"]):
         errs.append("The AI model name has invalid characters.")
-    start, end = input_to_utc(form.get("start_at", "")), input_to_utc(form.get("end_at", ""))
+    d["country"] = form.get("country") if form.get("country") in db.COUNTRIES else db.ANY_COUNTRY
+    d["tz"] = form.get("tz", "") if zone(form.get("tz", "")) else ""
+    where = tz_of(d)
+    start, end = input_to_utc(form.get("start_at", ""), where), input_to_utc(form.get("end_at", ""), where)
     d["start_at"], d["end_at"] = fmt(start), fmt(end)
     if start and end and end <= start:
         errs.append("The stop time must be after the start time.")
@@ -187,6 +236,7 @@ def validate(form, known_keywords):
     if not sts:
         errs.append("Pick at least one lead status to include.")
     d["statuses"] = ",".join(sts)
+    d["channel"] = form.get("channel") if form.get("channel") in senders.CHANNELS else "test"
     d["mobile_only"] = 1 if form.get("mobile_only") else 0
     d["mark_contacted"] = 1 if form.get("mark_contacted") else 0
     kws = [k for k in dict.fromkeys(form.getlist("kw")) if k in known_keywords]
@@ -207,10 +257,14 @@ def _audience(c, now):
          f"COALESCE(p.status,'New') IN ({q(c['statuses'])})",
          f"p.place_id IN (SELECT sp.place_id FROM search_places sp JOIN searches s ON s.id=sp.search_id WHERE s.query IN ({q(c['keywords'])}))",
          "NOT EXISTS (SELECT 1 FROM messages m WHERE m.campaign_id=? AND m.place_id=p.place_id)",
-         f"NOT EXISTS (SELECT 1 FROM optouts o WHERE o.phone = {num})"]
+         f"NOT EXISTS (SELECT 1 FROM optouts o WHERE o.phone = {num})",
+         f"NOT EXISTS (SELECT 1 FROM replies rp WHERE rp.phone = {num})"]       # they answered: a person takes over, no more automatic messages
     a = [*c["statuses"], *c["keywords"], c["id"]]
+    if c.get("country") and c["country"] != db.ANY_COUNTRY:
+        w.append("p.country = ?")
+        a.append(c["country"])
     if c["mobile_only"]:
-        w.append("p.intl_phone GLOB '+91 [6-9]*'")
+        w.append(db.MOBILE_SQL)
     # Per-person limits count real sends to the same phone number across ALL campaigns (test-mode sends don't count).
     w.append(f"(SELECT COUNT(*) FROM messages m3 WHERE m3.phone = {num} AND m3.status IN ('sent','sending')) < ?")
     a.append(c["max_messages"])
@@ -294,14 +348,17 @@ def delete_media(cid, mid):
 def claim_next(c, now):
     """Atomically pick the next lead + variant and record it as 'sending'.
     Returns (reason, job): reason is 'ready' or why nothing was claimed."""
-    interval = 3600 / c["per_hour"]
     with db.tx() as t:
         t.execute("BEGIN IMMEDIATE")  # serialises workers so a lead is never claimed twice
-        last = t.execute("SELECT MAX(sent_at) FROM messages WHERE campaign_id=?", (c["id"],)).fetchone()[0]
-        if last and (now - parse(last)).total_seconds() < interval:
+        if c["channel"] == "whatsapp":  # one number: the gap is shared by every whatsapp campaign
+            row = t.execute("SELECT m.id, m.sent_at FROM messages m JOIN campaigns k ON k.id=m.campaign_id "
+                            "WHERE k.channel='whatsapp' ORDER BY m.id DESC LIMIT 1").fetchone()
+        else:
+            row = t.execute("SELECT id, sent_at FROM messages WHERE campaign_id=? ORDER BY id DESC LIMIT 1", (c["id"],)).fetchone()
+        if row and (now - parse(row["sent_at"])).total_seconds() < gap_seconds(c, row["id"]):
             return "interval", None
         today = t.execute("SELECT COUNT(*) FROM messages WHERE campaign_id=? AND sent_at>=?",
-                          (c["id"], fmt(local_day_start_utc(now)))).fetchone()[0]
+                          (c["id"], fmt(local_day_start_utc(now, tz_of(c))))).fetchone()[0]
         if today >= c["daily_cap"]:
             return "cap", None
         v = t.execute(
@@ -348,11 +405,13 @@ def stats(cid, now=None):
     now = now or utcnow()
     with db.tx() as t:
         one = lambda sql, *a: t.execute(sql, a).fetchone()[0]
+        row = t.execute("SELECT country, tz FROM campaigns WHERE id=?", (cid,)).fetchone()
+        tz = tz_of(dict(row)) if row else TZ
         return {
             "sent": one("SELECT COUNT(*) FROM messages WHERE campaign_id=? AND status='sent'", cid),
             "test": one("SELECT COUNT(*) FROM messages WHERE campaign_id=? AND status='test'", cid),
             "failed": one("SELECT COUNT(*) FROM messages WHERE campaign_id=? AND status='failed'", cid),
-            "today": one("SELECT COUNT(*) FROM messages WHERE campaign_id=? AND sent_at>=?", cid, fmt(local_day_start_utc(now))),
+            "today": one("SELECT COUNT(*) FROM messages WHERE campaign_id=? AND sent_at>=?", cid, fmt(local_day_start_utc(now, tz))),
         }
 
 
@@ -367,10 +426,7 @@ def log(cid, page, per):
 
 # ---------- opt-outs ----------
 def normalize_phone(s):
-    d = re.sub(r"\D", "", s or "")
-    if len(d) == 10:
-        d = "91" + d
-    return d if 11 <= len(d) <= 15 else ""
+    return db.clean_phone(s)
 
 
 def add_optouts(text, reason="manual"):

@@ -53,7 +53,7 @@
   }
   document.addEventListener('mousedown', function (e) { if (openMenu && !openMenu.menu.contains(e.target) && !openMenu.btn.contains(e.target)) closeMenu(); });
   function follow(e) {  // keep the menu attached to its button; close only if the button scrolls out of view
-    if (!openMenu || (e && openMenu.menu.contains(e.target))) return;
+    if (!openMenu || (e && e.target instanceof Node && openMenu.menu.contains(e.target))) return;
     var r = openMenu.btn.getBoundingClientRect();
     if (r.bottom < 0 || r.top > window.innerHeight) return closeMenu();
     openMenu.place();
@@ -123,6 +123,150 @@
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); open(true); }
     });
   }
+
+  /* ---------- time, date-time and suggestion widgets: in-page UI instead of the browser's native popups ---------- */
+  var CAL = '<svg class="ic sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M8 2.5v4M16 2.5v4M3 10h18"/></svg>';
+  var ARROW = function (d) { return '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="' + (d < 0 ? '15 6 9 12 15 18' : '9 6 15 12 9 18') + '"/></svg>'; };
+  var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+  function fire(i) { i.dispatchEvent(new Event('input', { bubbles: true })); }
+  function nums(a, b, step) { var r = []; for (var i = a; i <= b; i += step) r.push(pad(i)); return r; }
+  function withValue(list, v) { if (list.indexOf(v) < 0) { list.push(v); list.sort(); } return list; }
+  function makeSelect(label, values, cur) {
+    var sl = document.createElement('select'); sl.setAttribute('aria-label', label);
+    values.forEach(function (v) { var o = document.createElement('option'); o.value = o.textContent = v; sl.appendChild(o); });
+    sl.value = cur; return sl;
+  }
+
+  function enhanceTime(inp) {
+    var lo = inp.getAttribute('min') || '00:00', hi = inp.getAttribute('max') || '23:59';
+    var p = (/^\d\d:\d\d$/.test(inp.value) ? inp.value : lo).split(':');
+    inp.type = 'hidden';
+    var box = el('div', 'timepick');
+    var hs = makeSelect('Hour', withValue(nums(+lo.slice(0, 2), +hi.slice(0, 2), 1), p[0]), p[0]);
+    var ms = makeSelect('Minute', withValue(nums(0, 55, 5), p[1]), p[1]);
+    box.appendChild(hs); box.appendChild(el('span', 'tsep', ':')); box.appendChild(ms);
+    inp.parentNode.insertBefore(box, inp.nextSibling);
+    box.addEventListener('click', function (e) { e.preventDefault(); });
+    var busy = false;
+    function apply() {
+      if (busy) return;
+      var v = hs.value + ':' + ms.value;
+      if (v < lo) v = lo; else if (v > hi) v = hi;
+      busy = true;
+      hs.value = v.slice(0, 2); ms.value = v.slice(3);
+      hs.dispatchEvent(new Event('change')); ms.dispatchEvent(new Event('change'));   // refresh the dropdown labels
+      busy = false;
+      inp.value = v; fire(inp);
+    }
+    hs.addEventListener('change', apply); ms.addEventListener('change', apply);
+  }
+
+  var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  function enhanceDateTime(inp) {
+    var sp = inp.parentNode.querySelector('span');
+    inp.type = 'hidden';
+    var wrap = el('div', 'dtpick'), btn = el('button', 'dd-btn', CAL + '<span class="dd-label"></span>' + CHEV);
+    btn.type = 'button'; btn.setAttribute('aria-haspopup', 'dialog'); btn.setAttribute('aria-expanded', 'false');
+    btn.setAttribute('aria-label', sp ? sp.textContent : 'Date and time');
+    var clear = el('button', 'dt-clear', 'Clear'); clear.type = 'button';
+    wrap.appendChild(btn); wrap.appendChild(clear);
+    inp.parentNode.insertBefore(wrap, inp.nextSibling);
+    wrap.addEventListener('click', function (e) { e.preventDefault(); });   // the surrounding <label> must not re-click the button
+    var panel = null, view = null, tm = null;
+
+    function parse() { var m = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)$/.exec(inp.value); return m ? { y: +m[1], mo: +m[2] - 1, d: +m[3], h: m[4], mi: m[5] } : null; }
+    function paint() {
+      var v = parse(), lab = btn.querySelector('.dd-label');
+      lab.textContent = v ? new Date(v.y, v.mo, v.d).toLocaleDateString('en-GB', v.y === new Date().getFullYear() ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + v.h + ':' + v.mi : 'Not set';
+      lab.classList.toggle('dim', !v); clear.hidden = !v; wrap.classList.toggle('has', !!v);
+    }
+    function set(y, mo, d) { inp.value = y + '-' + pad(mo + 1) + '-' + pad(d) + 'T' + tm.h + ':' + tm.mi; paint(); fire(inp); }
+    function close() { if (panel) { panel.remove(); panel = null; btn.setAttribute('aria-expanded', 'false'); } }
+    function clearAll() { inp.value = ''; paint(); fire(inp); close(); }
+
+    function render() {
+      var v = parse(), now = new Date();
+      panel.innerHTML = '';
+      var head = el('div', 'cal-head'), prev = el('button', 'cal-nav', ARROW(-1)), next = el('button', 'cal-nav', ARROW(1));
+      prev.type = next.type = 'button'; prev.setAttribute('aria-label', 'Previous month'); next.setAttribute('aria-label', 'Next month');
+      prev.onclick = function () { view.m--; if (view.m < 0) { view.m = 11; view.y--; } render(); };
+      next.onclick = function () { view.m++; if (view.m > 11) { view.m = 0; view.y++; } render(); };
+      head.appendChild(prev); head.appendChild(el('b', null, MONTHS[view.m] + ' ' + view.y)); head.appendChild(next);
+      panel.appendChild(head);
+      var grid = el('div', 'cal-grid');
+      ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].forEach(function (d) { grid.appendChild(el('i', null, d)); });
+      var off = (new Date(view.y, view.m, 1).getDay() + 6) % 7, n = new Date(view.y, view.m + 1, 0).getDate(), i;
+      for (i = 0; i < off; i++) grid.appendChild(el('span'));
+      for (i = 1; i <= n; i++) (function (d) {
+        var b = el('button', 'cal-day', d); b.type = 'button';
+        if (v && v.y === view.y && v.mo === view.m && v.d === d) b.classList.add('sel');
+        if (now.getFullYear() === view.y && now.getMonth() === view.m && now.getDate() === d) b.classList.add('today');
+        b.onclick = function () { set(view.y, view.m, d); render(); };
+        grid.appendChild(b);
+      })(i);
+      panel.appendChild(grid);
+      var foot = el('div', 'cal-foot'), hs = makeSelect('Hour', withValue(nums(0, 23, 1), tm.h), tm.h), ms = makeSelect('Minute', withValue(nums(0, 55, 5), tm.mi), tm.mi);
+      var onTime = function () { tm = { h: hs.value, mi: ms.value }; var c = parse(); if (c) set(c.y, c.mo, c.d); };
+      hs.addEventListener('change', onTime); ms.addEventListener('change', onTime);
+      var done = el('button', 'btn sm', 'Done'); done.type = 'button'; done.onclick = function () { close(); btn.focus(); };
+      foot.appendChild(el('span', 'hint', 'Time')); foot.appendChild(hs); foot.appendChild(el('span', 'tsep', ':')); foot.appendChild(ms); foot.appendChild(done);
+      panel.appendChild(foot);
+      enhance(hs); enhance(ms);
+    }
+    function open() {
+      var v = parse(), t = new Date();
+      tm = v ? { h: v.h, mi: v.mi } : { h: '09', mi: '00' };
+      view = v ? { y: v.y, m: v.mo } : { y: t.getFullYear(), m: t.getMonth() };
+      panel = el('div', 'cal'); panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Choose date and time');
+      wrap.appendChild(panel); render(); btn.setAttribute('aria-expanded', 'true');
+      var r = panel.getBoundingClientRect();
+      if (r.right > window.innerWidth - 8) { panel.style.left = 'auto'; panel.style.right = '0'; }
+    }
+    btn.addEventListener('click', function () { if (panel) close(); else open(); });
+    clear.addEventListener('click', clearAll);
+    document.addEventListener('mousedown', function (e) { if (panel && !wrap.contains(e.target) && !e.target.closest('.dd-menu')) close(); });
+    wrap.addEventListener('keydown', function (e) { if (e.key === 'Escape' && panel) { close(); btn.focus(); } });
+    paint();
+  }
+
+  function enhanceSuggest(inp) {
+    var list = []; try { list = JSON.parse(inp.getAttribute('data-suggest')); } catch (e) { /* no suggestions */ }
+    var menu = null;
+    function close() { if (menu) { menu.remove(); menu = null; } }
+    function show() {
+      var q = inp.value.trim().toLowerCase();
+      var hits = list.filter(function (k) { var l = k.toLowerCase(); return l.indexOf(q) >= 0 && l !== q; }).slice(0, 8);
+      close(); if (!hits.length) return;
+      menu = el('div', 'dd-menu'); menu.setAttribute('role', 'listbox');
+      hits.forEach(function (k) {
+        var it = el('button', 'dd-opt'); it.type = 'button'; it.setAttribute('role', 'option');
+        var tx = el('span', 'tx'); tx.textContent = k; tx.title = k; it.appendChild(tx);
+        it.addEventListener('click', function () { inp.value = k; close(); inp.focus(); fire(inp); });
+        menu.appendChild(it);
+      });
+      document.body.appendChild(menu);
+      var r = inp.getBoundingClientRect();
+      menu.style.minWidth = r.width + 'px'; menu.style.left = r.left + 'px'; menu.style.top = (r.bottom + 6) + 'px';
+      menu.addEventListener('keydown', function (e) {
+        var items = Array.prototype.slice.call(menu.children), k = items.indexOf(document.activeElement);
+        if (e.key === 'ArrowDown') { e.preventDefault(); items[Math.min(k + 1, items.length - 1)].focus(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); if (k <= 0) inp.focus(); else items[k - 1].focus(); }
+        else if (e.key === 'Escape') { e.preventDefault(); close(); inp.focus(); }
+      });
+    }
+    inp.addEventListener('focus', show); inp.addEventListener('input', show);
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') close();
+      else if (e.key === 'ArrowDown' && menu) { e.preventDefault(); menu.firstChild.focus(); }
+    });
+    document.addEventListener('mousedown', function (e) { if (menu && e.target !== inp && !menu.contains(e.target)) close(); });
+    window.addEventListener('scroll', function (e) { if (menu && !menu.contains(e.target)) close(); }, true);
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('input[type=time]'), enhanceTime);
+  Array.prototype.forEach.call(document.querySelectorAll('input[type=datetime-local]'), enhanceDateTime);
+  Array.prototype.forEach.call(document.querySelectorAll('input[data-suggest]'), enhanceSuggest);
   Array.prototype.forEach.call(document.querySelectorAll('select'), enhance);
 
   /* ---------- keyword filter + busy buttons ---------- */
@@ -144,6 +288,11 @@
       fetch('/job/' + j.dataset.id + '.json').then(function (r) { return r.json(); }).then(function (d) {
         bar.style.width = Math.max(4, d.total ? Math.round(100 * d.done / d.total) : 0) + '%';
         txt.textContent = 'Searched ' + d.done + ' of ' + d.total + ' · ' + d.found + ' unique businesses found';
+        var cc = document.getElementById('jobcountries');
+        if (cc && d.countries) {
+          cc.innerHTML = '';
+          d.countries.forEach(function (c) { var p = document.createElement('span'); p.className = 'pill'; p.textContent = c.name + ' '; var b = document.createElement('b'); b.textContent = c.n; p.appendChild(b); cc.appendChild(p); });
+        }
         if (d.status === 'running') return setTimeout(poll, 1500);
         if (d.url && !d.message) return (location.href = d.url);
         spin.style.display = 'none';
@@ -153,5 +302,22 @@
         else { var b = document.createElement('a'); b.className = 'btn ghost'; b.href = '/'; b.textContent = 'Back'; m.appendChild(b); }
       }).catch(function () { setTimeout(poll, 3000); });
     })();
+  }
+
+  /* ---------- campaign settings: what the window + pace allow per day ---------- */
+  var cap = document.getElementById('capacity');
+  if (cap) {
+    var form = cap.closest('form');
+    var mins = function (v) { var p = (v || '').split(':'); return p.length < 2 ? 0 : +p[0] * 60 + +p[1]; };
+    var showCapacity = function () {
+      var day = +form.daily_cap.value || 0, hour = +form.per_hour.value || 0;
+      var max = Math.floor(Math.max(mins(form.window_end.value) - mins(form.window_start.value), 0) * hour / 60);
+      cap.textContent = day > max
+        ? 'At ' + hour + ' per hour in this window, only about ' + max + ' messages fit in a day, not ' + day + '. Raise messages per hour or widen the window.'
+        : 'Up to ' + day + ' messages a day, about one every ' + (hour > 60 ? Math.round(3600 / hour) + ' sec' : Math.round(60 / Math.max(hour, 1)) + ' min') + ' until the day\'s limit is reached (the window fits ' + max + ').';
+      cap.style.color = day > max ? 'var(--bad)' : '';
+    };
+    form.addEventListener('input', showCapacity);
+    showCapacity();
   }
 })();

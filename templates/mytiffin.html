@@ -1,0 +1,49 @@
+{% extends "base.html" %}{% block title %}MyTiffin · Lead Finder{% endblock %}{% block body %}
+<div class=top><div><h1>Send to MyTiffin</h1><p class=sub>Add every lead from the searches you pick to your MyTiffin directory. Each kitchen gets an invite link to join.</p></div></div>
+
+{% if not configured %}<div class="flash err">MYTIFFIN_API_KEY is not set on the server, so nothing can be sent yet.</div>{% endif %}
+
+{% if result %}<div class=card>
+  <h2>{{ 'Sent' if not result.error else 'Stopped' }}</h2>
+  {% if result.error %}<p class="flash err" style="margin:.4rem 0">{{ result.error }}</p>{% endif %}
+  <div class=chips><span class="pill ok">{{ result.added }} added</span><span class=pill>{{ result.sent }} sent</span><span class=pill>{{ result.skipped|length }} skipped</span><span class="pill info">{{ result.linked }} linked to a MyTiffin invite</span></div>
+  {% if result.skipped %}<p class=hint style="margin:.8rem 0 .3rem">Skipped by MyTiffin:</p>
+  <ul class=hint style="margin:0;padding-left:1.2rem;max-height:220px;overflow:auto">{% for s in result.skipped %}<li>{{ s }}</li>{% endfor %}</ul>{% endif %}
+</div>{% endif %}
+
+<form method=post action="{{ url_for('tiffin.preview') }}" class=card>
+  <input type=hidden name=csrf value="{{ csrf }}">
+  <h2>1. Pick searches</h2>
+  <p class=hint style="margin-top:-.4rem">All Indian mobile leads from the ticked searches are sent, once each. Leads already in MyTiffin, on your opt-out list, or without a mobile number are left out.</p>
+  <div class=toolbar style="border:0;padding:0 0 .6rem"><div class=grow><svg class="ic sm"><use href="#i-search"/></svg><input type=search placeholder="Filter searches" data-filter="#tfkw"></div></div>
+  <div class=kwlist id=tfkw>
+    {% for k in rows %}<label class=chk><input type=checkbox name=kw value="{{ k.keyword }}" {{ 'checked' if k.keyword in chosen }}> <span>{{ k.keyword }}</span>
+      <em>{{ k.ready }} ready{% if k.pushed %} · {{ k.pushed }} sent{% endif %}</em></label>
+    {% else %}<p class=hint>No searches yet.</p>{% endfor %}
+  </div>
+  <h2 style="margin-top:1.2rem">2. Settings for this push</h2>
+  <div class=fields>
+    <label class=chk><input type=checkbox name=list_on_join value=1 {{ 'checked' if list_on_join }}> <span>List on join <small class=hint>(kitchen shows in the marketplace as soon as it joins)</small></span></label>
+    <label class=f><span>Free days</span><input type=number name=free_days value="{{ free_days }}" min=0 max=365><small class=hint>Free marketplace days given to every kitchen in this push.</small></label>
+  </div>
+  <div class=row style="margin-top:1rem"><button class=btn>Preview</button></div>
+</form>
+
+{% if preview %}<form method=post action="{{ url_for('tiffin.send') }}" class=card>
+  <input type=hidden name=csrf value="{{ csrf }}"><input type=hidden name=free_days value="{{ free_days }}">{% if list_on_join %}<input type=hidden name=list_on_join value=1>{% endif %}
+  {% for k in chosen %}<input type=hidden name=kw value="{{ k }}">{% endfor %}
+  <h2>3. Check and send</h2>
+  {% if preview.n %}
+  <p><b>{{ preview.n }}</b> kitchens will be sent · list on join <b>{{ 'on' if list_on_join else 'off' }}</b> · <b>{{ free_days }}</b> free days. Area and city are read from the Google address, so check the sample.</p>
+  <div class=table-wrap><table><thead><tr><th>Name<th>Phone<th>Area<th>City<th>Pincode</tr></thead><tbody>
+  {% for s in preview.sample %}<tr><td>{{ s.name }}<td class=phone>{{ s.phone }}<td>{{ s.area or '—' }}<td>{{ s.city or '—' }}<td>{{ s.pincode or '—' }}</tr>{% endfor %}</tbody></table></div>
+  {% if preview.n > preview.sample|length %}<p class=hint>…and {{ preview.n - preview.sample|length }} more.</p>{% endif %}
+  <div class=row style="margin-top:.8rem"><button class=btn {{ 'disabled' if not configured }}>Send {{ preview.n }} to MyTiffin</button></div>
+  {% else %}<p class=hint>Nothing to send: every lead in these searches is already in MyTiffin or not eligible.</p>{% endif %}
+</form>{% endif %}
+
+{% if history %}<div class="card flush"><div style="padding:1.1rem 1.2rem .3rem"><h2 style="margin:0">Past pushes</h2></div>
+  <div class=table-wrap><table><thead><tr><th>When<th>Searches<th>Sent<th>Added<th>Skipped<th>Settings</tr></thead><tbody>
+  {% for h in history %}<tr><td class=hint>{{ h.at|human }}<td class=hint style="max-width:320px">{{ h.keywords }}<td>{{ h.sent }}<td>{{ h.added }}<td>{{ h.skipped }}<td class=hint>{{ 'listed' if h.list_on_join else 'not listed' }} · {{ h.free_days }} days{% if h.error %} · <span class="pill bad">{{ h.error[:40] }}</span>{% endif %}</tr>{% endfor %}
+  </tbody></table></div></div>{% endif %}
+{% endblock %}

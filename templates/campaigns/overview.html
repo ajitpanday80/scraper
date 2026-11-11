@@ -50,18 +50,26 @@
     <p class=hint style="margin-top:.8rem">Approved variants are used in turn, least-used first.</p></div>
   <div class=card><h2>Plan</h2>
     <dl class=facts>
+      <dt>Country</dt><dd>{{ country_name(c.country) }} <span class=hint>· times in {{ c.tzname }}</span></dd>
       <dt>Keywords</dt><dd>{% if c.keywords %}<div class=tags>{% for k in c.keywords %}<span class=tag>{{ k }}</span>{% endfor %}</div>{% else %}<a href="{{ url_for('camp.settings', cid=c.id) }}">Choose keywords</a>{% endif %}</dd>
-      <dt>Starts</dt><dd>{{ c.start_at|human if c.start_at else 'When you press Start' }}</dd>
-      <dt>Stops</dt><dd>{{ c.end_at|human if c.end_at else 'When you stop it' }}</dd>
+      <dt>Starts</dt><dd>{{ c.start_at|human(c.tzname) if c.start_at else 'When you press Start' }}</dd>
+      <dt>Stops</dt><dd>{{ c.end_at|human(c.tzname) if c.end_at else 'When you stop it' }}</dd>
       <dt>Daily window</dt><dd>{{ c.window_start }}–{{ c.window_end }} · {% for d in c.days %}{{ ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][d|int] }}{{ ', ' if not loop.last }}{% endfor %}</dd>
       <dt>Per person</dt><dd>Max {{ c.max_messages }} messages · at least {{ c.min_gap_days }} days apart</dd>
       <dt>Pace</dt><dd>{{ c.per_hour }} per hour · max {{ c.daily_cap }} per day</dd>
     </dl></div>
 </div>
 
+{% if more_kws %}<details class=card><summary style="cursor:pointer;font-weight:650">+ Add more keywords to this campaign{% if c.status == 'active' %} <span class=hint>(works while it is running)</span>{% endif %}</summary>
+  <form method=post action="{{ url_for('camp.add_keywords', cid=c.id) }}" style="margin-top:1rem"><input type=hidden name=csrf value="{{ csrf }}">
+    <div class=toolbar style="border:0;padding:0 0 .6rem"><div class=grow><svg class="ic sm"><use href="#i-search"/></svg><input type=search placeholder="Filter keywords" data-filter="#morekw"></div></div>
+    <div class=kwlist id=morekw>{% for k in more_kws %}<label class=chk><input type=checkbox name=kw value="{{ k.keyword }}"> <span>{{ k.keyword }}</span><em>{{ k.n }} leads</em></label>{% endfor %}</div>
+    <div class=row style="margin-top:.8rem"><button class=btn>Add selected keywords</button></div>
+  </form></details>{% endif %}
+
 <div class="card flush"><div style="padding:1.1rem 1.2rem .3rem"><h2 style="margin:0">Activity</h2></div>
 {% if log %}<div class=table-wrap><table><thead><tr><th>When<th>Business<th>Phone<th>Variant<th>Status</tr></thead><tbody>
-{% for m in log %}<tr><td class=hint>{{ m.sent_at|human }}<td class=name>{{ m.name or '—' }}<td class=phone>+{{ m.phone }}
+{% for m in log %}<tr><td class=hint>{{ m.sent_at|human(c.tzname) }}<td class=name>{{ m.name or '—' }}<td class=phone>+{{ m.phone }}
   <td>V{{ vlabel.get(m.variant_id, '?') }}<td><span class="pill {{ {'sent':'ok','test':'info','failed':'bad'}.get(m.status, '') }}" title="{{ m.error }}">{{ {'test':'simulated'}.get(m.status, m.status) }}</span></tr>{% endfor %}
 </tbody></table></div>{% include "_pagebar.html" %}
 {% else %}<div class=empty><b>Nothing sent yet</b>Messages appear here as the campaign runs.</div>{% endif %}</div>

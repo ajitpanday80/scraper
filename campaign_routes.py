@@ -9,6 +9,7 @@ import ai
 import camp
 import db
 import scheduler
+import senders
 from paging import pager
 
 bp = Blueprint("camp", __name__, url_prefix="/campaigns")
@@ -36,7 +37,7 @@ def describe(c, now=None):
         return "Completed", "muted", c["note"] or "Stopped."
     code = scheduler.check(c, now)
     if code == "scheduled":
-        return "Scheduled", "info", f"Starts {camp.human(c['start_at'])}."
+        return "Scheduled", "info", f"Starts {camp.human(c['start_at'], c['tzname'])}."
     if code in ("day", "window"):
         return "Waiting", "warn", f"Outside the sending window. Opens {camp.next_open(c, now)}."
     if camp.stats(c["id"], now)["today"] >= c["daily_cap"]:
@@ -45,6 +46,11 @@ def describe(c, now=None):
         return "Needs a message", "warn", "Approve at least one message variant."
     if camp.audience_count(c, now) == 0:
         return "Idle", "info", "No eligible leads right now. New matching leads are picked up automatically."
+    if c["channel"] == "whatsapp":
+        import whatsapp
+        if whatsapp.status()["state"] != "ready":
+            return "Waiting for WhatsApp", "warn", "No number is linked. Open the WhatsApp page and scan the QR code."
+        return "Running", "ok", f"One message every {camp.WA_GAP[0] // 60}-{camp.WA_GAP[1] // 60} minutes (random)."
     return "Running", "ok", f"About one message every {round(3600 / c['per_hour'])} seconds."
 
 
@@ -66,16 +72,28 @@ def index():
     for r in rows:
         r["state"] = describe(r)
         r["audience"] = camp.audience_count(r)
-    return render_template("campaigns/list.html", rows=rows, pg=pg, args=_args())
+    return render_template("campaigns/list.html", rows=rows, pg=pg, args=_args(), country_opts=country_options())
+
+
+def country_options():
+    """(code, label) for the country pickers: countries you have leads from first (with counts), then Any, then the rest."""
+    have = {c["code"]: c["n"] for c in db.countries() if c["code"] in db.COUNTRIES}
+    top = [(k, f"{db.country_name(k)} · {n} leads") for k, n in sorted(have.items(), key=lambda kv: -kv[1])]
+    rest = [(k, v[0]) for k, v in sorted(db.COUNTRIES.items(), key=lambda kv: kv[1][0]) if k not in have]
+    return top + [(db.ANY_COUNTRY, "Any country (mixed)")] + rest
 
 
 @bp.post("/new")
 def new():
     name = request.form.get("name", "").strip()[:80]
+    country = request.form.get("country", "")
     if not name:
         flash("Give the campaign a name.", "err")
         return redirect(url_for("camp.index"))
-    return redirect(url_for("camp.settings", cid=camp.create(name)))
+    if country not in db.COUNTRIES and country != db.ANY_COUNTRY:
+        flash("Choose which country this campaign is for.", "err")
+        return redirect(url_for("camp.index"))
+    return redirect(url_for("camp.settings", cid=camp.create(name, country)))
 
 
 # ---------- overview + controls ----------
@@ -89,7 +107,23 @@ def overview(cid):
     vs = camp.variants(cid)
     return render_template("campaigns/overview.html", c=c, tab="overview", state=describe(c), stats=camp.stats(cid),
                            audience=camp.audience_count(c), variants=vs, vlabel={v["id"]: i for i, v in enumerate(vs, 1)},
-                           log=log, pg=pg, args=_args())
+                           log=log, pg=pg, args=_args(),
+                           more_kws=[k for k in db.keywords(c["country"]) if k["keyword"] not in c["keywords"]])
+
+
+@bp.post("/<int:cid>/keywords")
+def add_keywords(cid):
+    c = _c(cid)
+    known = {k["keyword"] for k in db.keywords()}
+    new = [k for k in dict.fromkeys(request.form.getlist("kw")) if k in known and k not in c["keywords"]]
+    if not new:
+        flash("Tick at least one keyword to add.", "err")
+    else:
+        camp.add_keywords(cid, new)
+        left = camp.audience_count(camp.get(cid))
+        flash(f"Added {len(new)} keyword{'s' if len(new) != 1 else ''}. {left} leads are now waiting."
+              + (" Sending continues automatically." if c["status"] == "active" else ""), "ok")
+    return redirect(url_for("camp.overview", cid=cid))
 
 
 def _launch_errors(c, ack):
@@ -158,13 +192,23 @@ def settings(cid):
         if not errs:
             camp.update(cid, clean, chosen)
             flash("Settings saved.", "ok")
+            cap = camp.day_capacity(clean)
+            if cap < clean["daily_cap"]:
+                flash(f"At {clean['per_hour']} per hour between {clean['window_start']} and {clean['window_end']}, only about {cap} "
+                      f"messages can go out a day, not {clean['daily_cap']}. Raise messages per hour or widen the window.", "warn")
             return redirect(url_for("camp.settings", cid=cid))
         for e in errs:
             flash(e, "err")
         c = {**c, **clean, "keywords": chosen, "days": clean["days"].split(","), "statuses": clean["statuses"].split(",")}
-    return render_template("campaigns/settings.html", c=c, tab="settings", all_keywords=kws, days=camp.DAYS,
+        c["tzname"] = str(camp.tz_of(c))
+    # offer only keywords that have leads in this campaign's country (plus any already ticked, so nothing silently disappears)
+    shown = db.keywords(c["country"])
+    names = {k["keyword"] for k in shown}
+    shown += [{**k, "n": 0} for k in kws if k["keyword"] in c["keywords"] and k["keyword"] not in names]
+    return render_template("campaigns/settings.html", c=c, tab="settings", all_keywords=shown, days=camp.DAYS,
+                           country_opts=country_options(), timezones=camp.TIMEZONES, country_name=db.country_name,
                            languages=camp.LANGUAGES, audience=camp.audience_count(camp.get(cid)), limit=camp.LIMIT,
-                           max_per_hour=camp.MAX_PER_HOUR, tz=str(camp.TZ), env_model=os.environ.get("OPENROUTER_MODEL", ""))
+                           max_per_hour=camp.MAX_PER_HOUR, channels=senders.CHANNELS, wa_gap=camp.WA_GAP, tz=c["tzname"], env_model=os.environ.get("OPENROUTER_MODEL", ""))
 
 
 # ---------- messages (variants + media) ----------

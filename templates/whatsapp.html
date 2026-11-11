@@ -1,0 +1,68 @@
+{% extends "base.html" %}{% block title %}WhatsApp · Lead Finder{% endblock %}{% block body %}
+<h1>WhatsApp</h1>
+<p class=sub>The number campaigns send from. Link it once by scanning a QR code; switch to another number any time.</p>
+
+<div class=card id=wa data-url="{{ url_for('wa.status_json') }}">
+  <div id=wa-ready {{ 'hidden' if s.state != 'ready' }}>
+    <h2>Connected <span class="pill ok">Ready</span></h2>
+    <p>Sending as <b id=wa-number>+{{ s.number }}</b> <span id=wa-name class=hint>{{ s.name }}</span></p>
+    <p>Today: <b id=wa-today>{{ today }}</b> of <b id=wa-limit>{{ limit }}</b> messages <span class=hint>(this number was linked <span id=wa-age>{{ age }}</span> days ago; the daily limit rises as it ages)</span></p>
+    <form method=post action="{{ url_for('wa.switch') }}" id=wa-switch>
+      <input type=hidden name=csrf value="{{ csrf }}">
+      <button type=button class="btn ghost" id=wa-ask>Switch number</button>
+      <span class=confirm hidden>This unlinks <b>+{{ s.number }}</b>. Campaigns pause sending until you scan a new QR code.
+        <button class=btn>Yes, switch number</button> <button type=button class="btn ghost" id=wa-no>Cancel</button></span>
+    </form>
+  </div>
+
+  <div id=wa-qr {{ 'hidden' if s.state != 'qr' }}>
+    <h2>Link a number</h2>
+    <ol class=hint style="margin:.2rem 0 1rem;padding-left:1.2rem">
+      <li>On the phone with the SIM, open WhatsApp (or WhatsApp Business).</li>
+      <li>Settings → Linked devices → Link a device.</li>
+      <li>Scan this code. It refreshes by itself.</li>
+    </ol>
+    <img id=wa-img alt="WhatsApp QR code" width=320 height=320 src="{{ s.qr }}" style="background:#fff;border-radius:12px;padding:8px">
+  </div>
+
+  <div id=wa-wait {{ 'hidden' if s.state in ('ready', 'qr') }}>
+    <h2 id=wa-wait-title>{{ 'WhatsApp bridge is not running' if s.state == 'offline' else 'Starting WhatsApp…' }}</h2>
+    <p class=hint id=wa-wait-text>{{ 'Start it with: systemctl start wa-bridge' if s.state == 'offline' else 'This takes up to a minute. The QR code appears here.' }}</p>
+  </div>
+</div>
+
+<div class=card>
+  <h2>Before you send</h2>
+  <ul class=hint style="margin:0;padding-left:1.2rem">
+    <li>This uses unofficial WhatsApp Web automation. WhatsApp can ban the number. Use a dedicated SIM, never your personal number.</li>
+    <li>The daily limit ramps up automatically per number: 10 a day for 3 days, 20 until day 7, 30 until day 14, then 50. A new number restarts the ramp.</li>
+    <li>Replies like STOP or “not interested” add the person to the opt-out list automatically.</li>
+    <li>Warm up a new number first: chat normally with real contacts for a week or two before linking it here.</li>
+    <li>Messages go out one at a time with a random 3–4 minute gap, shared by every WhatsApp campaign. Keep “Messages per day” low (20–40) on a new number.</li>
+    <li>Numbers that are not on WhatsApp are skipped and logged as failed. They never pause a campaign.</li>
+    <li>Switching number keeps all history. The per-person limits still apply across numbers.</li>
+  </ul>
+</div>
+
+<script>
+(function () {
+  var box = document.getElementById('wa'), $ = function (id) { return document.getElementById(id); };
+  function paint(s) {
+    $('wa-ready').hidden = s.state !== 'ready';
+    $('wa-qr').hidden = s.state !== 'qr';
+    $('wa-wait').hidden = s.state === 'ready' || s.state === 'qr';
+    if (s.state === 'ready') { $('wa-today').textContent = s.today; $('wa-limit').textContent = s.limit; $('wa-age').textContent = s.age; $('wa-number').textContent = '+' + s.number; $('wa-name').textContent = s.name; }
+    if (s.state === 'qr' && s.qr && $('wa-img').src !== s.qr) $('wa-img').src = s.qr;
+    if (!$('wa-wait').hidden) {
+      var off = s.state === 'offline';
+      $('wa-wait-title').textContent = off ? 'WhatsApp bridge is not running' : (s.state === 'disconnected' ? 'Disconnected, reconnecting…' : 'Starting WhatsApp…');
+      $('wa-wait-text').textContent = off ? 'Start it with: systemctl start wa-bridge' : 'This takes up to a minute. The QR code appears here.';
+    }
+  }
+  function poll() { fetch(box.dataset.url, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(paint).catch(function () {}); }
+  var ask = $('wa-ask'), ok = document.querySelector('#wa-switch .confirm');
+  ask.onclick = function () { ask.hidden = true; ok.hidden = false; };
+  $('wa-no').onclick = function () { ok.hidden = true; ask.hidden = false; };
+  setInterval(poll, 3000);
+})();
+</script>{% endblock %}

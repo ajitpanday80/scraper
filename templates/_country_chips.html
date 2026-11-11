@@ -1,0 +1,2 @@
+{% if countries %}<div class=chips style="margin-top:.5rem">{% for c in countries %}<a class="pill {{ 'ok' if f.country==c.code }}" href="{{ url_for(request.endpoint, country=c.code, **(request.view_args or {})) }}" title="Show only {{ c.name }}">{{ c.name }} <b>{{ c.n }}</b></a>{% endfor %}
+{% if f.country %}<a class=pill href="{{ url_for(request.endpoint, **(request.view_args or {})) }}">Show all</a>{% endif %}</div>{% endif %}

@@ -5,3 +5,9 @@
 __pycache__/
 .pytest_cache/
 uploads/
+wa-bridge/node_modules/
+wa-bridge/session/
+wa-bridge/install.log
+venv/
+wa-bridge/.wwebjs_cache/
+*.bak

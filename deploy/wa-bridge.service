@@ -1,0 +1,14 @@
+[Unit]
+Description=WhatsApp bridge (whatsapp-web.js) for Lead Finder
+After=network.target
+
+[Service]
+WorkingDirectory=/root/scarper/wa-bridge
+EnvironmentFile=/etc/wa-bridge/env
+ExecStart=/usr/local/bin/node server.js
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

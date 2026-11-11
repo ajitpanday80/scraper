@@ -14,6 +14,9 @@
     <div class=lbl>Menu</div>
     <a class="nav {{ 'on' if request.endpoint=='index' }}" href="{{ url_for('index') }}"><svg class=ic><use href="#i-grid"/></svg>Dashboard</a>
     <a class="nav {{ 'on' if request.blueprint=='camp' }}" href="{{ url_for('camp.index') }}"><svg class=ic><use href="#i-send"/></svg>Campaigns</a>
+    <a class="nav {{ 'on' if request.endpoint in ('wa.page', 'wa.status_json') }}" href="{{ url_for('wa.page') }}"><svg class=ic><use href="#i-phone"/></svg>WhatsApp</a>
+    <a class="nav {{ 'on' if request.endpoint=='wa.replies' }}" href="{{ url_for('wa.replies') }}"><svg class=ic><use href="#i-chat"/></svg>Replies{% if unread_replies %}<span class=badge>{{ unread_replies }}</span>{% endif %}</a>
+    <a class="nav {{ 'on' if request.blueprint=='tiffin' }}" href="{{ url_for('tiffin.page') }}"><svg class=ic><use href="#i-zap"/></svg>MyTiffin</a>
     <a class="nav {{ 'on' if request.endpoint=='searches' }}" href="{{ url_for('searches') }}"><svg class=ic><use href="#i-layers"/></svg>Searches</a>
     <a class="nav {{ 'on' if request.endpoint in ('leads','view') }}" href="{{ url_for('leads') }}"><svg class=ic><use href="#i-users"/></svg>All leads</a>
     <form class=push method=post action="{{ url_for('logout') }}"><input type=hidden name=csrf value="{{ csrf }}">

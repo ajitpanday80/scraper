@@ -14,8 +14,22 @@
       <small class=hint>Leave blank to use the server default{% if env_model %} (<b>{{ env_model }}</b>){% else %} (none set yet, so type one here or set OPENROUTER_MODEL){% endif %}.</small></label>
   </div></div>
 
+<div class=card><h2>Send via</h2>
+  <div class=fields>
+    <label class=f><span>Channel</span><select name=channel aria-label="Channel">{% for k, v in channels.items() %}<option value="{{ k }}" {{ 'selected' if c.channel==k }}>{{ v }}</option>{% endfor %}</select>
+      <small class=hint>WhatsApp sends from the number linked on the <a href="{{ url_for('wa.page') }}">WhatsApp page</a>, waiting a random {{ wa_gap[0] // 60 }}-{{ wa_gap[1] // 60 }} minutes between messages (this overrides “Messages per hour”). Test mode sends nothing.</small></label>
+  </div></div>
+
+<div class=card><h2>Who you are messaging</h2>
+  <div class=fields>
+    <label class=f><span>Country</span><select name=country aria-label="Country" data-dd-wide>{% for k, label in country_opts %}<option value="{{ k }}" {{ 'selected' if c.country==k }}>{{ label }}</option>{% endfor %}</select>
+      <small class=hint>Only leads from this country are messaged, and only its keywords are listed below. Save to refresh the list after changing it.</small></label>
+    <label class=f><span>Time zone</span><select name=tz aria-label="Time zone"><option value="" {{ 'selected' if not c.tz }}>Automatic (from country)</option>{% for k, v in timezones.items() %}<option value="{{ k }}" {{ 'selected' if c.tz==k }}>{{ v }}</option>{% endfor %}</select>
+      <small class=hint>The sending window and start/stop times below are in the <b>recipients'</b> time zone: {{ c.tzname }}.</small></label>
+  </div></div>
+
 <div class=card><h2>Audience</h2>
-  <p class=hint style="margin-top:-.4rem">Leads found by the keywords you tick below will be messaged. Leads without a phone number are always skipped. <b>{{ audience }}</b> leads qualify right now with the saved settings.</p>
+  <p class=hint style="margin-top:-.4rem">Showing keywords that found leads in <b>{{ country_name(c.country) }}</b>. Leads found by the keywords you tick below will be messaged. Leads without a phone number are always skipped. <b>{{ audience }}</b> leads qualify right now with the saved settings.</p>
   <div class=toolbar style="border:0;padding:0 0 .6rem"><div class=grow><svg class="ic sm"><use href="#i-search"/></svg><input type=search placeholder="Filter keywords" data-filter="#kwlist"></div></div>
   <div class=kwlist id=kwlist>
     {% for k in all_keywords %}<label class=chk><input type=checkbox name=kw value="{{ k.keyword }}" {{ 'checked' if k.keyword in c.keywords }}> <span>{{ k.keyword }}</span><em>{{ k.n }} leads</em></label>
@@ -23,22 +37,23 @@
   </div>
   <div class=fields style="margin-top:1rem">
     <div class="f wide"><span>Include leads with status</span><div class=pills>{% for s in statuses %}<label class=chip-check><input type=checkbox name=statuses value="{{ s }}" {{ 'checked' if s in c.statuses }}><span>{{ s }}</span></label>{% endfor %}</div></div>
-    <label class=chk><input type=checkbox name=mobile_only value=1 {{ 'checked' if c.mobile_only }}> <span>Mobile numbers only</span></label>
+    <label class=chk><input type=checkbox name=mobile_only value=1 {{ 'checked' if c.mobile_only }}> <span>Skip landlines <small class=hint>(Indian landlines are skipped; numbers from other countries are kept)</small></span></label>
     <label class=chk><input type=checkbox name=mark_contacted value=1 {{ 'checked' if c.mark_contacted }}> <span>Mark leads as “Contacted” after a real send</span></label>
     <label class=f><span>Maximum messages per person</span><input type=number name=max_messages value="{{ c.max_messages }}" min=1 max=10><small class=hint>Counted across all campaigns. Default 3.</small></label>
     <label class=f><span>Minimum days between messages</span><input type=number name=min_gap_days value="{{ c.min_gap_days }}" min=1 max=365><small class=hint>To the same person, across all campaigns. Default 3.</small></label>
   </div></div>
 
 <div class=card><h2>Schedule</h2>
-  <p class=hint style="margin-top:-.4rem">All times are {{ tz }}. Sending only happens inside the daily window, on the days you pick.</p>
+  <p class=hint style="margin-top:-.4rem">All times are {{ tz }} (the recipients' time zone). Sending only happens inside the daily window, on the days you pick.</p>
   <div class=fields>
-    <label class=f><span>Start</span><input type=datetime-local name=start_at value="{{ c.start_at|local_input }}"><small class=hint>Blank = as soon as you press Start.</small></label>
-    <label class=f><span>Stop (optional)</span><input type=datetime-local name=end_at value="{{ c.end_at|local_input }}"><small class=hint>Blank = until you stop it.</small></label>
+    <label class=f><span>Start</span><input type=datetime-local name=start_at value="{{ c.start_at|local_input(c.tzname) }}"><small class=hint>Blank = as soon as you press Start.</small></label>
+    <label class=f><span>Stop (optional)</span><input type=datetime-local name=end_at value="{{ c.end_at|local_input(c.tzname) }}"><small class=hint>Blank = until you stop it.</small></label>
     <label class=f><span>Daily window opens</span><input type=time name=window_start value="{{ c.window_start }}" min="{{ limit[0] }}" max="{{ limit[1] }}"></label>
     <label class=f><span>Daily window closes</span><input type=time name=window_end value="{{ c.window_end }}" min="{{ limit[0] }}" max="{{ limit[1] }}"><small class=hint>Allowed range: {{ limit[0] }}–{{ limit[1] }}.</small></label>
     <div class="f wide"><span>Days</span><div class=pills>{% for d in days %}<label class=chip-check><input type=checkbox name=days value="{{ loop.index0 }}" {{ 'checked' if loop.index0|string in c.days }}><span>{{ d }}</span></label>{% endfor %}</div></div>
+    <label class=f><span>Messages per day</span><input type=number name=daily_cap value="{{ c.daily_cap }}" min=1 max=2000><small class=hint>Most messages this campaign sends in one day. Stops for the day once reached.</small></label>
     <label class=f><span>Messages per hour</span><input type=number name=per_hour value="{{ c.per_hour }}" min=1 max="{{ max_per_hour }}"><small class=hint>Spread evenly, e.g. 30 means one about every 2 minutes.</small></label>
-    <label class=f><span>Daily limit</span><input type=number name=daily_cap value="{{ c.daily_cap }}" min=1 max=2000></label>
+    <p class=hint id=capacity style="margin:0;grid-column:1/-1"></p>
   </div></div>
 
 <div class=row><button class=btn>Save settings</button><a class="btn ghost" href="{{ url_for('camp.overview', cid=c.id) }}">Cancel</a></div>

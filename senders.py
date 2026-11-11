@@ -1,7 +1,7 @@
-"""Message senders. Only a test sender exists for now: it records the send but contacts nobody.
+"""Message senders: a test sender (records the send, contacts nobody) and WhatsApp (see whatsapp.py).
 
-A real provider (WhatsApp Cloud API with approved templates, or a DLT-registered SMS gateway)
-plugs in by adding a class with the same `send` signature to SENDERS.
+Another provider (WhatsApp Cloud API, a DLT-registered SMS gateway) plugs in by adding a class with the same
+`send` signature (and optionally `ready()`) and registering it in get() and CHANNELS.
 """
 from dataclasses import dataclass
 
@@ -12,6 +12,7 @@ class Result:
     ref: str = ""
     error: str = ""
     simulated: bool = False
+    lead_error: bool = False  # this lead can't be messaged (e.g. not on WhatsApp); the sender itself works
 
 
 class TestSender:
@@ -23,7 +24,11 @@ class TestSender:
 
 
 SENDERS = {"test": TestSender()}
+CHANNELS = {"test": "Test mode (nothing is sent)", "whatsapp": "WhatsApp (linked number)"}
 
 
 def get(channel):
+    if channel == "whatsapp" and "whatsapp" not in SENDERS:
+        from whatsapp import WhatsAppSender  # lazy: whatsapp imports Result from this module
+        SENDERS["whatsapp"] = WhatsAppSender()
     return SENDERS.get(channel) or SENDERS["test"]

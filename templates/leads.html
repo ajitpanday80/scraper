@@ -1,4 +1,16 @@
 {% extends "base.html" %}{% block title %}All leads · Lead Finder{% endblock %}{% block body %}
-<div class=top><div><h1>All leads</h1><p class=sub>{{ total }} unique businesses across all your searches.</p></div></div>
+<div class=top><div><h1>All leads</h1><p class=sub>{{ total }} unique businesses across all your searches.</p>{% include "_country_chips.html" %}</div></div>
+<details class=card id=addlead {{ 'open' if request.args.get('add') }}><summary style="cursor:pointer;font-weight:650">+ Add a lead manually</summary>
+  <form method=post action="{{ url_for('add_lead') }}" style="margin-top:1rem"><input type=hidden name=csrf value="{{ csrf }}">
+    <div class=fields>
+      <label class=f><span>Business name</span><input type=text name=name maxlength=120 required></label>
+      <label class=f><span>Phone</span><input type=tel name=phone placeholder="98765 43210 or +91…" maxlength=20 required></label>
+      <label class=f><span>Keyword / list</span><input type=text name=keyword value="Manual leads" maxlength=80 autocomplete=off data-suggest='{{ kws|map(attribute="keyword")|list|tojson }}'>
+        <small class=hint>Campaigns target leads by keyword. Pick an existing one to add this lead to its campaigns.</small></label>
+      <label class=f><span>Address (optional)</span><input type=text name=address maxlength=300></label>
+      <label class="f wide"><span>Notes (optional)</span><input type=text name=notes maxlength=2000></label>
+    </div>
+    <div class=row style="margin-top:.8rem"><button class=btn>Add lead</button></div>
+  </form></details>
 {% set csv_url = url_for('csv_all', **args) %}
 <div class="card flush">{% include "_filters.html" %}{% include "_leads_table.html" %}</div>{% endblock %}

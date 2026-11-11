@@ -6,7 +6,7 @@
       <span class="pill ok">{{ info.new_count }} new leads</span>
       <span class=pill>{{ info.known }} already in your system</span>
       <span class=pill>{{ info.created_at }} UTC</span>
-    </div></div>
+    </div>{% include "_country_chips.html" %}</div>
   <div class=seg>
     <a class="{{ 'on' if scope=='new' }}" href="{{ url_for('view', sid=sid) }}">New<small>{{ info.new_count }}</small></a>
     <a class="{{ 'on' if scope=='all' }}" href="{{ url_for('view', sid=sid, scope='all') }}">All<small>{{ info.total }}</small></a>
