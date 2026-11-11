@@ -20,6 +20,28 @@ Production: `gunicorn --workers 1 --threads 4 --bind 0.0.0.0:6761 app:app`.
 **Keep `--workers 1`**: search progress and the login lockout counter live in memory.
 Existing databases are upgraded automatically on first start. Back up `places.db`.
 
+## Google Places API key
+The key is only needed to **search for new businesses**. Without it the app still runs: search shows "GOOGLE_PLACES_API_KEY is not set on the server", while leads you already have, **Add lead** (on the Leads page, one at a time), CSV export, campaigns and WhatsApp all keep working.
+
+Get a key:
+1. Sign in at [console.cloud.google.com](https://console.cloud.google.com) and create a project (top bar → project picker → **New project**).
+2. Turn on billing for the project (**Billing** → link a billing account). Google requires a card even for usage that stays inside the free monthly allowance.
+3. **APIs & Services → Library** → search **Places API (New)** → **Enable**. It must be the *New* one; the app calls `places.googleapis.com/v1`, which the legacy "Places API" does not cover.
+4. **APIs & Services → Credentials → Create credentials → API key**, and copy it.
+5. Click the key to restrict it:
+   - **API restrictions** → *Restrict key* → tick only **Places API (New)**.
+   - **Application restrictions** → *IP addresses* → add your server's public IP (find it with `curl -s ifconfig.me`).
+6. Recommended: **Billing → Budgets & alerts** → add a monthly budget so you get an email before costs grow.
+
+Add it to the server:
+
+    sudo nano /etc/places/env                 # add or edit the line:  GOOGLE_PLACES_API_KEY=AIza...
+    sudo systemctl restart places
+
+Running by hand instead? `export GOOGLE_PLACES_API_KEY=AIza...` before `python app.py`. Check it works by running one small search (one keyword, no areas).
+
+Cost: each result page (up to 20 businesses) is one billed request, so one keyword uses up to 3 requests and a 10-area search up to 30. Phone numbers put the request in a higher-priced tier. See Google's current [Places API pricing](https://developers.google.com/maps/billing-and-pricing/pricing) and keep `MAX_API_CALLS_PER_DAY` (default 300) as a hard daily stop.
+
 Never commit keys or passwords. Use HTTPS in production (`COOKIE_SECURE=1`).
 Phone fields are billed at a higher Google tier; check current Google Maps Platform pricing.
 Contacting leads is subject to TRAI DND and data-protection rules.
